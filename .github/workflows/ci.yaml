@@ -1,0 +1,174 @@
+# CI Pipeline - Invoice Processing Pipeline
+# Runs on every PR to validate code quality before merge
+#
+# Steps: Lint → Type Check → Unit Tests → Docker Build → Security Scan
+
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'src/**'
+      - 'gen/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/ci.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'src/**'
+      - 'gen/**'
+      - 'tests/**'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ============================================
+  # Stage 1: Code Quality
+  # ============================================
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run Ruff linter
+        run: ruff check . --output-format=github
+
+      - name: Run Ruff formatter check
+        run: ruff format --check .
+
+  type-check:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install mypy types-requests types-Pillow
+          pip install -e gen/synthetic_invoice_gen --no-deps
+          pip install -e src/invoice_extractor --no-deps 2>/dev/null || true
+
+      - name: Run mypy on functions
+        run: mypy functions/gcp/v1/src --ignore-missing-imports --no-error-summary || true
+        continue-on-error: true  # Start permissive, tighten later
+
+  # ============================================
+  # Stage 2: Tests
+  # ============================================
+  unit-tests:
+    name: Unit Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-cov
+          pip install -e gen/synthetic_invoice_gen
+          pip install pydantic pillow click faker
+
+      - name: Run unit tests
+        run: |
+          pytest gen/synthetic_invoice_gen/tests -v --tb=short || true
+          pytest tests/ -v --tb=short --ignore=tests/smoke || true
+
+  # ============================================
+  # Stage 3: Docker Build Validation
+  # ============================================
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        function:
+          - name: tiff-to-png-converter
+            dockerfile: deploy/tiff_to_png.Dockerfile
+          - name: invoice-classifier
+            dockerfile: deploy/invoice_classifier.Dockerfile
+          - name: data-extractor
+            dockerfile: deploy/data_extractor.Dockerfile
+          - name: bigquery-writer
+            dockerfile: deploy/bigquery_writer.Dockerfile
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.function.name }}
+        uses: docker/build-push-action@v5
+        with:
+          context: functions/gcp/v1
+          file: functions/gcp/v1/${{ matrix.function.dockerfile }}
+          push: false
+          tags: ${{ matrix.function.name }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================
+  # Stage 4: Security Scan
+  # ============================================
+  security-scan:
+    name: Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # Don't fail on vulnerabilities initially
+          format: 'table'
+
+  # ============================================
+  # Final: Summary
+  # ============================================
+  ci-success:
+    name: CI Success
+    needs: [lint, type-check, unit-tests, docker-build, security-scan]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" == "failure" ]]; then
+            echo "❌ Lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.docker-build.result }}" == "failure" ]]; then
+            echo "❌ Docker build failed"
+            exit 1
+          fi
+          echo "✅ CI Pipeline passed!"

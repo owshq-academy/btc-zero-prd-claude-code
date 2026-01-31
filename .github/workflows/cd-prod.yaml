@@ -1,0 +1,151 @@
+# CD Prod - Invoice Processing Pipeline
+# Deploys to PROD environment on release tag
+#
+# Triggers: cloudbuild-prod.yaml via gcloud builds submit
+# Target: PROD GCP project (eda-gemini-prd)
+
+name: CD - Deploy to Prod
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Matches v1.0.0, v1.2.3, etc.
+
+env:
+  GCP_PROJECT_PROD: ${{ secrets.GCP_PROJECT_PROD }}
+  GCP_REGION: us-central1
+  CLOUD_BUILD_CONFIG: functions/gcp/v1/cloudbuild-prod.yaml
+
+permissions:
+  contents: read
+  id-token: write  # Required for Workload Identity Federation
+
+jobs:
+  # ============================================
+  # Pre-deployment Validation
+  # ============================================
+  validate:
+    name: Pre-deployment Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate tag format
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Tag: $TAG"
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid tag format. Expected: v*.*.* (e.g., v1.2.3)"
+            exit 1
+          fi
+          echo "✅ Tag format valid: $TAG"
+
+      - name: Check tag is on main branch
+        run: |
+          # Ensure we're deploying from main
+          git fetch origin main
+          TAG_COMMIT=$(git rev-list -n 1 $GITHUB_REF)
+          if git merge-base --is-ancestor $TAG_COMMIT origin/main; then
+            echo "✅ Tag is on main branch"
+          else
+            echo "⚠️ Warning: Tag may not be on main branch"
+          fi
+
+  # ============================================
+  # Deploy to Production
+  # ============================================
+  deploy-prod:
+    name: Deploy to Prod
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: prod  # GitHub environment with protection rules
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get release tag
+        id: tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "🏷️ Deploying tag: $TAG"
+
+      # ============================================
+      # Option 1: Workload Identity Federation (Recommended)
+      # ============================================
+      - name: Authenticate to Google Cloud (Workload Identity)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER_PROD }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_PROD }}
+        continue-on-error: true
+
+      # ============================================
+      # Option 2: Service Account Key (Fallback)
+      # ============================================
+      - name: Authenticate to Google Cloud (SA Key)
+        if: steps.auth.outcome == 'failure'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_PROD }}
+
+      - name: Submit Cloud Build to Prod
+        run: |
+          echo "🚀 Deploying to PRODUCTION environment..."
+          echo "Project: $GCP_PROJECT_PROD"
+          echo "Tag: ${{ steps.tag.outputs.tag }}"
+          echo "Config: $CLOUD_BUILD_CONFIG"
+
+          gcloud builds submit \
+            --config=$CLOUD_BUILD_CONFIG \
+            --project=$GCP_PROJECT_PROD \
+            functions/gcp/v1
+
+      - name: Production Deployment Summary
+        run: |
+          echo "## 🎉 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Release: \`${{ steps.tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Function | Service Name | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TIFF Converter | fnc-tiff-to-png-converter-prd | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Classifier | fnc-invoice-classifier-prd | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Data Extractor | fnc-data-extractor-prd | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| BigQuery Writer | fnc-bigquery-writer-prd | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Project:** \`$GCP_PROJECT_PROD\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** \`$GCP_REGION\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Post-deployment Notification
+  # ============================================
+  notify:
+    name: Notify Team
+    runs-on: ubuntu-latest
+    needs: deploy-prod
+    if: always()
+    steps:
+      - name: Notify on success
+        if: needs.deploy-prod.result == 'success'
+        run: |
+          echo "✅ Production deployment successful!"
+          # Add Slack notification here if needed
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"🚀 Invoice Pipeline deployed to PROD: ${{ github.ref }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify on failure
+        if: needs.deploy-prod.result == 'failure'
+        run: |
+          echo "❌ Production deployment failed!"
+          # Add Slack notification here if needed

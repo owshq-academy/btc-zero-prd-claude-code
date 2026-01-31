@@ -1,0 +1,84 @@
+# CD Dev - Invoice Processing Pipeline
+# Deploys to DEV environment on merge to main
+#
+# Triggers: cloudbuild.yaml via gcloud builds submit
+# Target: DEV GCP project
+
+name: CD - Deploy to Dev
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/gcp/v1/**'
+
+env:
+  GCP_PROJECT_DEV: ${{ secrets.GCP_PROJECT_DEV }}
+  GCP_REGION: us-central1
+  CLOUD_BUILD_CONFIG: functions/gcp/v1/cloudbuild.yaml
+
+permissions:
+  contents: read
+  id-token: write  # Required for Workload Identity Federation
+
+jobs:
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    environment: dev  # GitHub environment for protection rules
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ============================================
+      # Option 1: Workload Identity Federation (Recommended)
+      # ============================================
+      - name: Authenticate to Google Cloud (Workload Identity)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        continue-on-error: true
+
+      # ============================================
+      # Option 2: Service Account Key (Fallback)
+      # ============================================
+      - name: Authenticate to Google Cloud (SA Key)
+        if: steps.auth.outcome == 'failure'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_DEV }}
+
+      - name: Submit Cloud Build
+        run: |
+          echo "🚀 Deploying to DEV environment..."
+          echo "Project: $GCP_PROJECT_DEV"
+          echo "Config: $CLOUD_BUILD_CONFIG"
+
+          gcloud builds submit \
+            --config=$CLOUD_BUILD_CONFIG \
+            --project=$GCP_PROJECT_DEV \
+            --substitutions=_REGION=$GCP_REGION \
+            functions/gcp/v1
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Dev Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| tiff-to-png-converter | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| invoice-classifier | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| data-extractor | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| bigquery-writer | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Project:** \`$GCP_PROJECT_DEV\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** \`$GCP_REGION\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

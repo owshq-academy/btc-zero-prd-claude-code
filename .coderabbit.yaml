@@ -1,0 +1,100 @@
+# CodeRabbit Configuration - Invoice Processing Pipeline
+# AI-powered code review for fast static analysis
+#
+# Docs: https://docs.coderabbit.ai/guides/configure-coderabbit
+
+language: en-US
+
+reviews:
+  # Enable automatic review on PRs
+  auto_review:
+    enabled: true
+    # Only review on PR open (not on every commit)
+    drafts: false
+
+  # High-level review settings
+  high_level_summary: true
+  poem: false  # Skip the poem for professional context
+
+  # Review instructions specific to this project
+  instructions: |
+    ## Project Context
+    This is an AI-powered invoice extraction pipeline for restaurant partner reconciliation.
+    The pipeline uses Gemini 2.0 Flash for document extraction with LangFuse observability.
+
+    ## Review Focus Areas
+    1. **Security** (Critical):
+       - LLM prompt injection vulnerabilities
+       - Credential handling in Cloud Run functions
+       - Input validation before LLM calls
+
+    2. **Pydantic Models**:
+       - Complete field validation
+       - Proper type annotations
+       - Default values and constraints
+
+    3. **Cloud Run Functions**:
+       - Proper error handling and logging
+       - Pub/Sub message acknowledgment
+       - GCS file operations
+
+    4. **Observability**:
+       - LangFuse tracing completeness
+       - Structured logging with context
+       - Cost and latency tracking
+
+    5. **Adapter Pattern**:
+       - Cloud service abstraction
+       - Interface consistency
+
+  # Path-based review rules
+  path_instructions:
+    - path: "functions/gcp/v1/src/functions/**"
+      instructions: |
+        Focus on Cloud Run function best practices:
+        - Proper HTTP response codes
+        - Pub/Sub message parsing
+        - Error handling with retries
+        - Memory and timeout considerations
+
+    - path: "functions/gcp/v1/src/shared/adapters/**"
+      instructions: |
+        Review adapter implementations for:
+        - Interface consistency
+        - Error handling
+        - Retry logic
+        - Cloud portability
+
+    - path: "**/schemas/**"
+      instructions: |
+        Verify Pydantic schemas have:
+        - Complete type annotations
+        - Field validators where needed
+        - Sensible defaults
+        - Clear docstrings
+
+    - path: "infra/**"
+      instructions: |
+        Review Terraform code for:
+        - Security best practices
+        - IAM least privilege
+        - Resource naming conventions
+        - Environment variable handling
+
+  # Files to skip
+  path_filters:
+    - "!**/*.md"
+    - "!**/*.txt"
+    - "!**/requirements*.txt"
+    - "!**/__pycache__/**"
+    - "!**/.git/**"
+    - "!**/node_modules/**"
+    - "!**/*.lock"
+    - "!**/poetry.lock"
+
+# Chat settings for @coderabbitai mentions
+chat:
+  auto_reply: true
+
+# Early access features
+early_access: false

@@ -1,0 +1,126 @@
+# Terraform Infrastructure - Invoice Processing Pipeline
+# Plans on PR, applies on merge to main (for infra/ changes only)
+#
+# Uses Terragrunt for multi-environment management
+
+name: Terraform
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+
+env:
+  TF_VERSION: '1.6.0'
+  TG_VERSION: '0.54.0'
+  WORKING_DIR: infra/environments/prod
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  # ============================================
+  # Terraform Plan (on PR)
+  # ============================================
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Setup Terragrunt
+        run: |
+          curl -LO https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TG_VERSION }}/terragrunt_linux_amd64
+          chmod +x terragrunt_linux_amd64
+          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+          terragrunt --version
+
+      # Authentication
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Terragrunt Init
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terragrunt run-all init --terragrunt-non-interactive
+
+      - name: Terragrunt Plan
+        id: plan
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          terragrunt run-all plan --terragrunt-non-interactive -out=tfplan 2>&1 | tee plan_output.txt
+        continue-on-error: true
+
+      - name: Comment Plan on PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('${{ env.WORKING_DIR }}/plan_output.txt', 'utf8');
+
+            const truncated = planOutput.length > 60000
+              ? planOutput.substring(0, 60000) + '\n\n... (truncated)'
+              : planOutput;
+
+            const body = `## 🏗️ Terraform Plan
+
+            <details>
+            <summary>Show Plan Output</summary>
+
+            \`\`\`hcl
+            ${truncated}
+            \`\`\`
+
+            </details>
+
+            **Status:** ${{ steps.plan.outcome == 'success' && '✅ Plan succeeded' || '❌ Plan failed' }}
+
+            > ⚠️ **Manual apply required.** Merge this PR, then apply infrastructure changes manually.
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # ============================================
+  # Terraform Apply (manual trigger recommended)
+  # ============================================
+  apply-notice:
+    name: Apply Notice
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Infrastructure change merged
+        run: |
+          echo "## ⚠️ Infrastructure Changes Merged" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure changes have been merged to main." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Review the changes in the \`infra/\` directory" >> $GITHUB_STEP_SUMMARY
+          echo "2. Run \`terragrunt run-all apply\` manually" >> $GITHUB_STEP_SUMMARY
+          echo "3. Verify the infrastructure in GCP Console" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **Note:** Automatic apply is disabled for safety. Infrastructure changes require manual review and apply." >> $GITHUB_STEP_SUMMARY

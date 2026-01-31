@@ -1,0 +1,73 @@
+# Claude Code AI Review - Invoice Processing Pipeline
+# Provides deep AI-powered code review on PRs
+#
+# Features:
+# - Automatic /review on PR open
+# - @claude mentions for interactive questions
+# - Follows CLAUDE.md project standards
+
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # ============================================
+  # Automatic Review on PR Open/Update
+  # ============================================
+  auto-review:
+    name: Claude Code Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            /review
+
+            Focus on:
+            1. Security vulnerabilities (especially LLM prompt injection)
+            2. Pydantic model validation completeness
+            3. Error handling in Cloud Run functions
+            4. Adherence to Adapter Pattern architecture
+            5. LangFuse observability integration
+          claude_args: |
+            --max-turns 5
+            --model claude-sonnet-4-5-20250929
+
+  # ============================================
+  # Interactive @claude Mentions
+  # ============================================
+  interactive:
+    name: Claude Interactive
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Respond to @claude mention
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          trigger_phrase: "@claude"
+          claude_args: |
+            --max-turns 10
+            --model claude-sonnet-4-5-20250929
