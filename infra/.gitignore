@@ -1,0 +1,6 @@
+# Terragrunt cache (contains large provider binaries)
+.terragrunt-cache/
+**/.terragrunt-cache/
+**/.terraform/
+*.tfstate
+*.tfstate.*

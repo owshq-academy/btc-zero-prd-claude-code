@@ -165,3 +165,9 @@ credentials.json
 *.jpg
 *.jpeg
 .env
+
+# Terragrunt/Terraform cache
+**/.terragrunt-cache/
+**/.terraform/
+*.tfstate
+*.tfstate.*

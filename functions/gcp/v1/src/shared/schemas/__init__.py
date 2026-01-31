@@ -22,6 +22,9 @@ from shared.schemas.messages import (
     InvoiceConvertedMessage,
     InvoiceExtractedMessage,
     InvoiceUploadedMessage,
+    TraceContextMixin,
+    generate_span_id,
+    generate_trace_id,
 )
 
 __all__ = [
@@ -36,4 +39,7 @@ __all__ = [
     "InvoiceConvertedMessage",
     "InvoiceClassifiedMessage",
     "InvoiceExtractedMessage",
+    "TraceContextMixin",
+    "generate_trace_id",
+    "generate_span_id",
 ]

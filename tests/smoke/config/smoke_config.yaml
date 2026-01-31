@@ -1,0 +1,60 @@
+# Smoke Test Configuration
+# This file defines timeouts, thresholds, and environment settings
+
+environments:
+  dev:
+    project: eda-gemini-dev
+    bucket: eda-gemini-dev-invoices-input
+    dataset: invoices
+    region: us-central1
+
+  prod:
+    project: eda-gemini-prd
+    bucket: eda-gemini-prd-invoices-input
+    dataset: ds_bq_gemini_prd
+    region: us-central1
+
+stages:
+  generate:
+    timeout_seconds: 30
+
+  upload:
+    timeout_seconds: 10
+    folder: landing
+
+  process:
+    timeout_seconds: 120
+    poll_interval_seconds: 5
+    folders_to_check:
+      - converted
+      - classified
+      - extracted
+
+  validate:
+    timeout_seconds: 10
+    critical_fields:
+      - invoice_id
+      - vendor_type
+      - total_amount
+      - currency
+
+  bigquery:
+    timeout_seconds: 15
+    table: extracted_invoices
+
+  logging:
+    timeout_seconds: 10
+    lookback_minutes: 5
+    severity_threshold: ERROR
+
+vendors:
+  ubereats:
+    invoice_id_pattern: "INV-UE-*"
+  doordash:
+    invoice_id_pattern: "INV-DD-*"
+  grubhub:
+    invoice_id_pattern: "INV-GH-*"
+  ifood:
+    invoice_id_pattern: "INV-IF-*"
+  rappi:
+    invoice_id_pattern: "INV-RP-*"

@@ -1,0 +1,18 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'deploy/data_extractor.Dockerfile'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/data-extractor:$_TAG_NAME'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/data-extractor:latest'
+      - '.'
+
+images:
+  - 'gcr.io/$PROJECT_ID/data-extractor:$_TAG_NAME'
+  - 'gcr.io/$PROJECT_ID/data-extractor:latest'
+
+substitutions:
+  _TAG_NAME: v10-remove-session-id-param

@@ -7,8 +7,15 @@ These adapters enable:
 """
 
 from shared.adapters.bigquery import BigQueryAdapter, GCPBigQueryAdapter
-from shared.adapters.llm import GeminiAdapter, LLMAdapter, LLMResponse
+from shared.adapters.llm import GeminiAdapter, LLMAdapter, LLMResponse, OpenRouterAdapter
 from shared.adapters.messaging import MessagingAdapter, PubSubAdapter
+from shared.adapters.observability import (
+    GenerationContext,
+    LangfuseObserver,
+    PromptResult,
+    TraceContext,
+    create_observer,
+)
 from shared.adapters.storage import GCSAdapter, StorageAdapter
 
 __all__ = [
@@ -18,7 +25,13 @@ __all__ = [
     "PubSubAdapter",
     "LLMAdapter",
     "GeminiAdapter",
+    "OpenRouterAdapter",
     "LLMResponse",
     "BigQueryAdapter",
     "GCPBigQueryAdapter",
+    "LangfuseObserver",
+    "GenerationContext",
+    "TraceContext",
+    "PromptResult",
+    "create_observer",
 ]

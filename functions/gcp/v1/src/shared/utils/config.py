@@ -29,6 +29,10 @@ class Config:
         dataset: BigQuery dataset name
         invoices_table: BigQuery invoices table
         line_items_table: BigQuery line items table
+        langfuse_public_key: LangFuse public API key
+        langfuse_secret_key: LangFuse secret key (from Secret Manager)
+        langfuse_base_url: LangFuse server endpoint
+        langfuse_enabled: Whether LangFuse observability is enabled
     """
 
     project_id: str
@@ -47,6 +51,10 @@ class Config:
     invoices_table: str
     line_items_table: str
     metrics_table: str
+    langfuse_public_key: str | None
+    langfuse_secret_key: str | None
+    langfuse_base_url: str
+    langfuse_enabled: bool
 
 
 @lru_cache(maxsize=1)
@@ -61,6 +69,10 @@ def get_config() -> Config:
         Clear cache with get_config.cache_clear() for testing.
     """
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "invoice-pipeline-dev")
+
+    langfuse_public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
+    langfuse_enabled = bool(langfuse_public_key and langfuse_secret_key)
 
     return Config(
         project_id=project_id,
@@ -79,4 +91,8 @@ def get_config() -> Config:
         invoices_table=os.environ.get("BQ_INVOICES_TABLE", "extracted_invoices"),
         line_items_table=os.environ.get("BQ_LINE_ITEMS_TABLE", "line_items"),
         metrics_table=os.environ.get("BQ_METRICS_TABLE", "extraction_metrics"),
+        langfuse_public_key=langfuse_public_key,
+        langfuse_secret_key=langfuse_secret_key,
+        langfuse_base_url=os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com"),
+        langfuse_enabled=langfuse_enabled,
     )

@@ -1,0 +1,63 @@
+# Cloud Build configuration for DLQ Processor
+# Builds and deploys the dead-letter queue handler
+#
+# Usage (from this directory):
+#   gcloud builds submit --config cloudbuild-dlq-processor.yaml .
+#
+# Required substitutions:
+#   _REGION: GCP region (default: us-central1)
+
+substitutions:
+  _REGION: us-central1
+  _FAILED_BUCKET: ${PROJECT_ID}-invoices-failed
+
+steps:
+  # Build dlq-processor
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-dlq-processor'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/dlq-processor:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/dlq-processor:latest'
+      - '-f'
+      - 'deploy/dlq_processor.Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-dlq-processor'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/dlq-processor:$COMMIT_SHA'
+    waitFor: ['build-dlq-processor']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-dlq-processor-latest'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/dlq-processor:latest'
+    waitFor: ['build-dlq-processor']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-dlq-processor'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'dlq-processor'
+      - '--image=gcr.io/$PROJECT_ID/dlq-processor:$COMMIT_SHA'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--memory=256Mi'
+      - '--timeout=60'
+      - '--no-allow-unauthenticated'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,FAILED_BUCKET=$_FAILED_BUCKET'
+    waitFor: ['push-dlq-processor']
+
+images:
+  - 'gcr.io/$PROJECT_ID/dlq-processor:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/dlq-processor:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

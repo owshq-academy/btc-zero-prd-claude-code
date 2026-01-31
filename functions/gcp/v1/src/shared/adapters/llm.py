@@ -5,12 +5,18 @@ Provides:
 - Gemini 2.5 Flash via Vertex AI (primary)
 - OpenRouter fallback (Claude 3.5 Sonnet)
 - Retry logic with exponential backoff
+- Optional LangFuse observability
 """
+
+from __future__ import annotations
 
 import base64
 import time
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
+
+if TYPE_CHECKING:
+    from shared.adapters.observability import LangfuseObserver
 
 
 @dataclass
@@ -42,7 +48,7 @@ class LLMAdapter(Protocol):
 
 
 class GeminiAdapter:
-    """Gemini 2.5 Flash via Vertex AI."""
+    """Gemini 2.5 Flash via Vertex AI with optional LangFuse observability."""
 
     def __init__(
         self,
@@ -51,6 +57,7 @@ class GeminiAdapter:
         model: str = "gemini-2.5-flash",
         max_retries: int = 2,
         timeout: int = 60,
+        observer: LangfuseObserver | None = None,
     ):
         """Initialize Gemini adapter.
 
@@ -60,6 +67,7 @@ class GeminiAdapter:
             model: Model name
             max_retries: Max retry attempts
             timeout: Request timeout in seconds
+            observer: Optional LangFuse observer for tracing
         """
         self._project_id = project_id
         self._region = region
@@ -67,6 +75,7 @@ class GeminiAdapter:
         self._max_retries = max_retries
         self._timeout = timeout
         self._client = None
+        self._observer = observer
 
     def _get_client(self):
         """Lazy-load Vertex AI client."""
@@ -88,11 +97,25 @@ class GeminiAdapter:
         Returns:
             LLMResponse with extraction result
         """
-        from vertexai.generative_models import Image, Part
+        from vertexai.generative_models import Part
 
         start_time = time.time()
         retry_count = 0
         last_error = None
+        generation_ctx = None
+
+        if self._observer:
+            generation_ctx = self._observer.start_generation(
+                name="gemini-extraction",
+                model=self._model,
+                prompt=prompt,
+                model_parameters={"temperature": 0.1, "max_output_tokens": 4096},
+                metadata={
+                    "provider": "gemini",
+                    "retry_attempt": retry_count,
+                    "image_count": len(image_data),
+                },
+            )
 
         while retry_count <= self._max_retries:
             try:
@@ -116,12 +139,31 @@ class GeminiAdapter:
                 latency_ms = int((time.time() - start_time) * 1000)
 
                 if response.text:
+                    input_tokens = getattr(
+                        response.usage_metadata, "prompt_token_count", None
+                    )
+                    output_tokens = getattr(
+                        response.usage_metadata, "candidates_token_count", None
+                    )
+                    total_tokens = None
+                    if input_tokens is not None and output_tokens is not None:
+                        total_tokens = input_tokens + output_tokens
+
+                    if self._observer:
+                        self._observer.end_generation(
+                            ctx=generation_ctx,
+                            output=response.text,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            success=True,
+                        )
+
                     return LLMResponse(
                         success=True,
                         content=response.text,
                         provider="gemini",
                         latency_ms=latency_ms,
-                        tokens_used=None,
+                        tokens_used=total_tokens,
                     )
                 else:
                     raise ValueError("Empty response from Gemini")
@@ -135,6 +177,17 @@ class GeminiAdapter:
                     time.sleep(wait_time)
 
         latency_ms = int((time.time() - start_time) * 1000)
+
+        if self._observer:
+            self._observer.end_generation(
+                ctx=generation_ctx,
+                output=None,
+                input_tokens=None,
+                output_tokens=None,
+                success=False,
+                error_message=last_error,
+            )
+
         return LLMResponse(
             success=False,
             content=None,
@@ -145,7 +198,7 @@ class GeminiAdapter:
 
 
 class OpenRouterAdapter:
-    """OpenRouter fallback (Claude 3.5 Sonnet)."""
+    """OpenRouter fallback (Claude 3.5 Sonnet) with optional LangFuse observability."""
 
     def __init__(
         self,
@@ -153,6 +206,7 @@ class OpenRouterAdapter:
         model: str = "anthropic/claude-3.5-sonnet",
         max_retries: int = 2,
         timeout: int = 60,
+        observer: LangfuseObserver | None = None,
     ):
         """Initialize OpenRouter adapter.
 
@@ -161,11 +215,13 @@ class OpenRouterAdapter:
             model: Model name
             max_retries: Max retry attempts
             timeout: Request timeout in seconds
+            observer: Optional LangFuse observer for tracing
         """
         self._api_key = api_key
         self._model = model
         self._max_retries = max_retries
         self._timeout = timeout
+        self._observer = observer
 
     def extract(self, prompt: str, image_data: list[bytes]) -> LLMResponse:
         """Extract structured data using OpenRouter (Claude).
@@ -182,8 +238,22 @@ class OpenRouterAdapter:
         start_time = time.time()
         retry_count = 0
         last_error = None
+        generation_ctx = None
 
         client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=self._api_key)
+
+        if self._observer:
+            generation_ctx = self._observer.start_generation(
+                name="openrouter-extraction",
+                model=self._model,
+                prompt=prompt,
+                model_parameters={"temperature": 0.1, "max_tokens": 4096},
+                metadata={
+                    "provider": "openrouter",
+                    "retry_attempt": retry_count,
+                    "image_count": len(image_data),
+                },
+            )
 
         while retry_count <= self._max_retries:
             try:
@@ -192,7 +262,10 @@ class OpenRouterAdapter:
                 for img_bytes in image_data:
                     img_b64 = base64.b64encode(img_bytes).decode("utf-8")
                     content_parts.append(
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}}
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+                        }
                     )
 
                 content_parts.append({"type": "text", "text": prompt})
@@ -208,12 +281,30 @@ class OpenRouterAdapter:
                 latency_ms = int((time.time() - start_time) * 1000)
 
                 if response.choices and response.choices[0].message.content:
+                    input_tokens = None
+                    output_tokens = None
+                    total_tokens = None
+
+                    if response.usage:
+                        input_tokens = response.usage.prompt_tokens
+                        output_tokens = response.usage.completion_tokens
+                        total_tokens = response.usage.total_tokens
+
+                    if self._observer:
+                        self._observer.end_generation(
+                            ctx=generation_ctx,
+                            output=response.choices[0].message.content,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            success=True,
+                        )
+
                     return LLMResponse(
                         success=True,
                         content=response.choices[0].message.content,
                         provider="openrouter",
                         latency_ms=latency_ms,
-                        tokens_used=response.usage.total_tokens if response.usage else None,
+                        tokens_used=total_tokens,
                     )
                 else:
                     raise ValueError("Empty response from OpenRouter")
@@ -227,6 +318,17 @@ class OpenRouterAdapter:
                     time.sleep(wait_time)
 
         latency_ms = int((time.time() - start_time) * 1000)
+
+        if self._observer:
+            self._observer.end_generation(
+                ctx=generation_ctx,
+                output=None,
+                input_tokens=None,
+                output_tokens=None,
+                success=False,
+                error_message=last_error,
+            )
+
         return LLMResponse(
             success=False,
             content=None,

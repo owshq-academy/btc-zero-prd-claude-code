@@ -42,7 +42,7 @@ class LineItem(BaseModel):
         ..., min_length=1, max_length=500, description="Item or service description"
     )
     quantity: int = Field(default=1, ge=1, le=1000, description="Quantity of items")
-    unit_price: Decimal = Field(..., ge=Decimal("0"), description="Price per unit")
+    unit_price: Decimal = Field(..., description="Price per unit (negative for discounts/credits)")
 
     @computed_field
     @property

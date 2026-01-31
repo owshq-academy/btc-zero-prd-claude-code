@@ -3,6 +3,11 @@
 Triggered by Pub/Sub messages on the invoice-classified topic.
 Downloads images, extracts data using Gemini, validates with Pydantic,
 and publishes extraction results to invoice-extracted topic.
+
+Supports LangFuse integration for:
+- End-to-end distributed tracing across pipeline functions
+- Prompt Management with versioned prompts
+- LLM observability with token tracking and confidence scoring
 """
 
 import base64
@@ -12,12 +17,22 @@ import logging
 import functions_framework
 from cloudevents.http import CloudEvent
 
-from shared.adapters import GCSAdapter, GeminiAdapter, PubSubAdapter
+from shared.adapters import (
+    GCSAdapter,
+    GeminiAdapter,
+    PubSubAdapter,
+    TraceContext,
+    create_observer,
+)
 from shared.adapters.llm import OpenRouterAdapter
 from shared.schemas.messages import InvoiceClassifiedMessage, InvoiceExtractedMessage
 from shared.utils import configure_logging, get_config, parse_gcs_uri
 
-from .extractor import extract_invoice
+from .extractor import (
+    calculate_extraction_scores,
+    extract_invoice,
+    get_score_comments,
+)
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -49,15 +64,22 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
     storage = GCSAdapter(project_id=config.project_id)
     messaging = PubSubAdapter(project_id=config.project_id)
 
+    # Create LangFuse observer for LLM tracing (auto-enables if keys present)
+    observer = create_observer(enabled=config.langfuse_enabled)
+
     gemini = GeminiAdapter(
         project_id=config.project_id,
         region=config.region,
         model=config.gemini_model,
+        observer=observer,
     )
 
     openrouter = None
     if config.openrouter_api_key:
-        openrouter = OpenRouterAdapter(api_key=config.openrouter_api_key)
+        openrouter = OpenRouterAdapter(
+            api_key=config.openrouter_api_key,
+            observer=observer,
+        )
 
     source_file = "unknown"
 
@@ -68,6 +90,9 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
         message = InvoiceClassifiedMessage.model_validate(raw_message)
         source_file = message.source_file
 
+        # Extract trace context from incoming message for distributed tracing
+        trace_context = TraceContext.from_message(message)
+
         logger.info(
             "Processing classified invoice",
             extra={
@@ -75,6 +100,8 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
                 "vendor_type": message.vendor_type.value,
                 "quality_score": message.quality_score,
                 "page_count": len(message.converted_files),
+                "trace_id": trace_context.trace_id,
+                "session_id": trace_context.session_id,
             },
         )
 
@@ -84,11 +111,13 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
             png_data = storage.read(bucket, path)
             images_data.append(png_data)
 
+        # Pass observer for LangFuse prompt management and tracing
         result = extract_invoice(
             images_data=images_data,
             vendor_type=message.vendor_type,
             llm_adapter=gemini,
             fallback_adapter=openrouter,
+            observer=observer,
         )
 
         if not result.success:
@@ -103,6 +132,7 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
             )
 
             _copy_to_failed_bucket(storage, config, source_file, result.error or "Unknown error")
+            observer.flush()  # Flush traces before returning
             return
 
         logger.info(
@@ -114,16 +144,49 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
                 "latency_ms": result.latency_ms,
                 "confidence": result.confidence,
                 "invoice_id": result.invoice.invoice_id if result.invoice else None,
+                "prompt_name": result.prompt_name,
+                "prompt_version": result.prompt_version,
+                "trace_id": trace_context.trace_id,
             },
         )
 
+        # Add LangFuse scores for extraction quality tracking
+        if result.invoice and observer.is_enabled:
+            extraction_scores = calculate_extraction_scores(result.invoice)
+            extraction_scores["extraction_confidence"] = result.confidence
+            score_comments = get_score_comments(result.invoice, extraction_scores)
+            score_comments["extraction_confidence"] = f"Provider: {result.provider}, latency: {result.latency_ms}ms"
+
+            observer.score_trace(
+                trace_id=trace_context.trace_id,
+                scores=extraction_scores,
+                comments=score_comments,
+            )
+
+            logger.debug(
+                "Added LangFuse scores",
+                extra={
+                    "trace_id": trace_context.trace_id,
+                    "scores": extraction_scores,
+                },
+            )
+
+        # Build extracted message with trace context propagation
         extracted_message = InvoiceExtractedMessage(
+            # Trace context - propagate to next function
+            trace_id=trace_context.trace_id,
+            session_id=trace_context.session_id,
+            parent_span_id=trace_context.parent_span_id,  # This span becomes parent for next
+            # Extraction results
             source_file=source_file,
             vendor_type=message.vendor_type,
-            extraction_model=f"gemini-2.5-flash" if result.provider == "gemini" else "openrouter",
+            extraction_model="gemini-2.5-flash" if result.provider == "gemini" else "openrouter",
             extraction_latency_ms=result.latency_ms,
             confidence_score=result.confidence,
             extracted_data=result.invoice.model_dump(mode="json") if result.invoice else {},
+            # Prompt tracking
+            prompt_name=result.prompt_name,
+            prompt_version=result.prompt_version,
         )
 
         messaging.publish(
@@ -140,6 +203,8 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
             },
         )
 
+        observer.flush()  # Flush traces before completing
+
     except Exception as e:
         logger.exception(
             "Extraction processing failed",
@@ -149,6 +214,7 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
                 "source_file": source_file,
             },
         )
+        observer.flush()  # Flush traces before re-raising
         raise
 
 

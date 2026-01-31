@@ -2,6 +2,7 @@
 
 import shutil
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -134,3 +135,59 @@ class TestCLIIntegration:
 
         if files1 and files2:
             assert files1[0].name == files2[0].name
+
+
+class TestCLIGCSOptions:
+    def test_help_shows_gcs_bucket_option(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "--gcs-bucket" in result.output
+        assert "GCS bucket" in result.output
+
+    def test_gcs_bucket_option_accepted(self, runner: CliRunner, tmp_path: Path) -> None:
+        result = runner.invoke(
+            main,
+            [
+                "--partner",
+                "ubereats",
+                "--output",
+                str(tmp_path),
+                "--gcs-bucket",
+                "test-bucket",
+            ],
+        )
+        assert "GCS access failed" in result.output or "test-bucket" in result.output
+
+    @patch("invoice_gen.gcs.uploader.storage.Client")
+    def test_gcs_bucket_validates_on_start(
+        self, mock_client_class: MagicMock, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        mock_client = MagicMock()
+        mock_bucket = MagicMock()
+        mock_bucket.exists.return_value = False
+        mock_client.bucket.return_value = mock_bucket
+        mock_client_class.return_value = mock_client
+
+        result = runner.invoke(
+            main,
+            [
+                "--partner",
+                "ubereats",
+                "--output",
+                str(tmp_path),
+                "--gcs-bucket",
+                "nonexistent",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "GCS access failed" in result.output
+
+    def test_without_gcs_bucket_works_normally(self, runner: CliRunner, tmp_path: Path) -> None:
+        result = runner.invoke(
+            main,
+            ["--partner", "ubereats", "--output", str(tmp_path), "--count", "1"],
+        )
+        if result.exit_code == 0:
+            assert "Uploading to GCS" not in result.output
+            assert "Generating" in result.output

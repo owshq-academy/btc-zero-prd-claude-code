@@ -1,0 +1,211 @@
+# Cloud Build configuration for Invoice Processing Pipeline (Production)
+# Builds and deploys all 4 Cloud Run functions with production naming
+#
+# Usage:
+#   gcloud builds submit --config cloudbuild-prod.yaml . --project=eda-gemini-prd
+#
+
+substitutions:
+  _REGION: us-central1
+  _INPUT_BUCKET: eda-gemini-prd-pipeline
+  _PROCESSED_BUCKET: eda-gemini-prd-processed
+  _ARCHIVE_BUCKET: eda-gemini-prd-archive
+  _FAILED_BUCKET: eda-gemini-prd-failed
+  _CONVERTED_TOPIC: eda-gemini-prd-invoice-converted
+  _CLASSIFIED_TOPIC: eda-gemini-prd-invoice-classified
+  _EXTRACTED_TOPIC: eda-gemini-prd-invoice-extracted
+  _BQ_DATASET: ds_bq_gemini_prd
+  _GEMINI_MODEL: gemini-2.0-flash-exp
+
+
+steps:
+  # ============================================
+  # Build and deploy tiff-to-png-converter
+  # ============================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-tiff-to-png'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/tiff-to-png-converter:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/tiff-to-png-converter:latest'
+      - '-f'
+      - 'deploy/tiff_to_png.Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-tiff-to-png'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/tiff-to-png-converter'
+    waitFor: ['build-tiff-to-png']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-tiff-to-png'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'fnc-tiff-to-png-converter-prd'
+      - '--image=gcr.io/$PROJECT_ID/tiff-to-png-converter:$BUILD_ID'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--timeout=300'
+      - '--min-instances=1'
+      - '--max-instances=50'
+      - '--concurrency=1'
+      - '--no-allow-unauthenticated'
+      - '--service-account=sa-tiff-converter-prd@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,INPUT_BUCKET=$_INPUT_BUCKET,PROCESSED_BUCKET=$_PROCESSED_BUCKET,CONVERTED_TOPIC=$_CONVERTED_TOPIC,ENVIRONMENT=prod'
+    waitFor: ['push-tiff-to-png']
+
+  # ============================================
+  # Build and deploy invoice-classifier
+  # ============================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-classifier'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/invoice-classifier:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/invoice-classifier:latest'
+      - '-f'
+      - 'deploy/invoice_classifier.Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-classifier'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/invoice-classifier'
+    waitFor: ['build-classifier']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-classifier'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'fnc-invoice-classifier-prd'
+      - '--image=gcr.io/$PROJECT_ID/invoice-classifier:$BUILD_ID'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--timeout=120'
+      - '--min-instances=1'
+      - '--max-instances=50'
+      - '--concurrency=10'
+      - '--no-allow-unauthenticated'
+      - '--service-account=sa-classifier-prd@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,PROCESSED_BUCKET=$_PROCESSED_BUCKET,ARCHIVE_BUCKET=$_ARCHIVE_BUCKET,CLASSIFIED_TOPIC=$_CLASSIFIED_TOPIC,ENVIRONMENT=prod'
+    waitFor: ['push-classifier']
+
+  # ============================================
+  # Build and deploy data-extractor
+  # ============================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-extractor'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/data-extractor:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/data-extractor:latest'
+      - '-f'
+      - 'deploy/data_extractor.Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-extractor'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/data-extractor'
+    waitFor: ['build-extractor']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-extractor'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'fnc-data-extractor-prd'
+      - '--image=gcr.io/$PROJECT_ID/data-extractor:$BUILD_ID'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--timeout=300'
+      - '--min-instances=2'
+      - '--max-instances=100'
+      - '--concurrency=1'
+      - '--no-allow-unauthenticated'
+      - '--service-account=sa-extractor-prd@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,PROCESSED_BUCKET=$_PROCESSED_BUCKET,FAILED_BUCKET=$_FAILED_BUCKET,EXTRACTED_TOPIC=$_EXTRACTED_TOPIC,GEMINI_MODEL=$_GEMINI_MODEL,ENVIRONMENT=prod'
+    waitFor: ['push-extractor']
+
+  # ============================================
+  # Build and deploy bigquery-writer
+  # ============================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-writer'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/bigquery-writer:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/bigquery-writer:latest'
+      - '-f'
+      - 'deploy/bigquery_writer.Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-writer'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/bigquery-writer'
+    waitFor: ['build-writer']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-writer'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'fnc-bigquery-writer-prd'
+      - '--image=gcr.io/$PROJECT_ID/bigquery-writer:$BUILD_ID'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--timeout=60'
+      - '--min-instances=1'
+      - '--max-instances=50'
+      - '--concurrency=50'
+      - '--no-allow-unauthenticated'
+      - '--service-account=sa-bq-writer-prd@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,BQ_DATASET=$_BQ_DATASET,ENVIRONMENT=prod'
+    waitFor: ['push-writer']
+
+images:
+  - 'gcr.io/$PROJECT_ID/tiff-to-png-converter:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/tiff-to-png-converter:latest'
+  - 'gcr.io/$PROJECT_ID/invoice-classifier:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/invoice-classifier:latest'
+  - 'gcr.io/$PROJECT_ID/data-extractor:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/data-extractor:latest'
+  - 'gcr.io/$PROJECT_ID/bigquery-writer:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/bigquery-writer:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  substitution_option: 'ALLOW_LOOSE'

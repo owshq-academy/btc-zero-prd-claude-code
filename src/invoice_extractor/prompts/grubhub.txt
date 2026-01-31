@@ -4,54 +4,102 @@ Extract all invoice data from the provided image(s) and return ONLY valid JSON m
 
 {schema}
 
-## Grubhub Invoice Patterns:
-- Invoice ID format: "GH-NNNNNN", "GRUB-YYYY-NN", or restaurant account codes
+## CRITICAL: Understanding Commission vs. Fees
+
+### Commission (Platform's Cut of Food Sales)
+- **commission_rate**: The PERCENTAGE Grubhub charges on food/beverage sales (typically 15-30%)
+- **commission_amount**: Calculated as `subtotal × commission_rate`
+- Look for: "Marketing Fee", "Commission", "Grubhub Fee", "Platform Fee"
+- This is Grubhub's revenue share for using their platform
+
+### Fees (Separate Charges - NOT Commission)
+- **Delivery Fee**: Charged to customer for delivery service (DO NOT include in commission)
+- **Service Fee**: Operational fee (DO NOT include in commission)
+- **Processing Fee**: Payment processing (DO NOT include in commission)
+- These should appear as LINE ITEMS, not as commission_amount
+
+### The Key Rule
+```
+commission_amount = subtotal × commission_rate
+```
+If you extract a commission_rate of 0.15 (15%) and subtotal of $100.00, then:
+- commission_amount MUST be $15.00
+- Delivery Fee, Service Fee are SEPARATE line items
+
+## Step-by-Step Extraction Process
+
+1. **Find Food Sales (subtotal)**:
+   - Look for "Gross Sales", "Food Sales", "Food & Beverage Sales"
+   - This is the BASE for commission calculation
+   - DO NOT include delivery fees or service fees in subtotal
+
+2. **Identify Commission**:
+   - Find the platform's percentage fee (usually labeled "Marketing Fee" or "Commission")
+   - Calculate: If Marketing Fee is $22.50 on subtotal of $150.00 → rate = 22.50/150.00 = 0.15
+
+3. **Extract Fees as Line Items**:
+   - Delivery Fee → separate line item
+   - Service Fee → separate line item
+   - Tips → separate line item (if shown)
+
+4. **Calculate Total**:
+   - total_amount = Final payout to restaurant (net of commission)
+
+## Grubhub Invoice Patterns
+- Invoice ID format: "GH-NNNNNN", "INV-GH-XXXXXX", or restaurant account codes
 - Vendor name: The restaurant name (NOT "Grubhub")
 - Currency: USD (primarily US market)
-- Commission rate: Typically 15-30% based on partnership tier
-- Line items: "Food Sales", "Delivery Fees", "Grubhub+ Fees", "Promotions"
+- Commission rate: Typically 0.15-0.30 (15-30%) based on partnership tier
 
-## Grubhub-Specific Fields:
-- "Gross Sales" or "Food & Beverage Sales" = subtotal before fees
-- "Marketing Fee" = Grubhub's commission/service fee
-- "Grubhub+ Revenue Share" for subscription orders
-- "Promo Credit" may appear as adjustments
-- "Processing Fees" for payment processing
-
-## Extraction Rules:
-1. Extract ALL line items from the statement
-2. Food Sales + Beverage Sales = subtotal
-3. Marketing Fee is the primary commission
-4. Additional fees (processing, delivery) may apply
-5. Total_amount = net deposit to restaurant
-
-## Date Formats:
+## Date Formats
 - Look for "Statement Period" or "Pay Period"
 - Invoice date = end of statement period
 - Due date = scheduled deposit date
 - Format dates as YYYY-MM-DD
 
-## Example Output:
+## Example 1: Correct Extraction
+Invoice shows:
+- Food Sales: $200.00
+- Marketing Fee (15%): $30.00
+- Delivery Fee: $8.50
+- Service Fee: $4.00
+- Net Payout: $221.50
+
+Correct JSON:
 ```json
 {
-  "invoice_id": "GH-2026-345678",
-  "vendor_name": "Mario's Italian Kitchen",
+  "invoice_id": "INV-GH-123456",
+  "vendor_name": "Mario's Kitchen",
   "vendor_type": "grubhub",
-  "invoice_date": "2026-01-14",
-  "due_date": "2026-01-17",
+  "invoice_date": "2026-01-15",
+  "due_date": "2026-01-18",
   "currency": "USD",
   "line_items": [
-    {"description": "Food Sales", "quantity": 1, "unit_price": "1875.00"},
-    {"description": "Beverage Sales", "quantity": 1, "unit_price": "425.00"},
-    {"description": "Delivery Fees Collected", "quantity": 1, "unit_price": "189.50"},
-    {"description": "Grubhub+ Orders Bonus", "quantity": 1, "unit_price": "75.00"}
+    {"description": "Food Sales", "quantity": 1, "unit_price": "200.00"},
+    {"description": "Delivery Fee", "quantity": 1, "unit_price": "8.50"},
+    {"description": "Service Fee", "quantity": 1, "unit_price": "4.00"}
   ],
-  "subtotal": "2564.50",
+  "subtotal": "200.00",
   "tax_amount": "0.00",
-  "commission_rate": "0.18",
-  "commission_amount": "413.10",
-  "total_amount": "2151.40"
+  "commission_rate": "0.15",
+  "commission_amount": "30.00",
+  "total_amount": "221.50"
 }
 ```
+
+Note: commission_amount ($30.00) = subtotal ($200.00) × commission_rate (0.15) ✓
+
+## Example 2: Common Mistake to AVOID
+❌ WRONG: Setting commission_amount = Delivery Fee + Service Fee
+❌ WRONG: Including fees in subtotal calculation
+❌ WRONG: Using commission_rate that doesn't match commission_amount / subtotal
+
+✓ RIGHT: commission_amount = subtotal × commission_rate (must be mathematically consistent)
+
+## Final Validation Checklist
+Before outputting, verify:
+- [ ] commission_amount ÷ subtotal = commission_rate (within 2% tolerance)
+- [ ] subtotal = sum of food/beverage sales only (not fees)
+- [ ] Delivery Fee and Service Fee are in line_items, not in commission
 
 Return ONLY the JSON object, no markdown formatting, code blocks, or explanations.

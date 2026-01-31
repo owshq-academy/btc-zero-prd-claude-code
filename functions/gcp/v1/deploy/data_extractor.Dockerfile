@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir \
     cloudevents>=1.10.0 \
     httpx>=0.25.0 \
     tenacity>=8.2.0 \
-    openai>=1.0.0
+    openai>=1.0.0 \
+    langfuse>=2.0.0
 
 # Set Python path
 ENV PYTHONPATH=/app

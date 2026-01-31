@@ -28,6 +28,7 @@ dependencies = [
     "pydantic>=2.5",
     "faker>=22.0",
     "click>=8.1",
+    "google-cloud-storage>=2.10.0",
 ]
 
 [project.optional-dependencies]

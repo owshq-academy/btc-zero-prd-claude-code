@@ -79,6 +79,12 @@ from invoice_gen.schemas.invoice import VendorType
     default=False,
     help="Keep HTML and PDF intermediate files (useful for debugging)",
 )
+@click.option(
+    "--gcs-bucket",
+    type=str,
+    default=None,
+    help="GCS bucket to upload generated files (requires gcloud auth)",
+)
 def main(
     partner: str | None,
     all_partners: bool,
@@ -91,6 +97,7 @@ def main(
     no_payment: bool,
     failure_rate: float,
     keep_intermediates: bool,
+    gcs_bucket: str | None,
 ) -> None:
     if not partner and not all_partners:
         raise click.UsageError("Either --partner or --all-partners must be specified")
@@ -115,6 +122,17 @@ def main(
         click.echo(click.style(f"  ⚠ Failure injection: {failure_rate:.0%} of invoices will have wrong totals", fg="yellow"))
     if keep_intermediates:
         click.echo(click.style("  📁 Keeping intermediate files (HTML, PDF)", fg="cyan"))
+
+    uploader = None
+    if gcs_bucket:
+        try:
+            from invoice_gen.gcs import GCSUploader
+
+            uploader = GCSUploader(gcs_bucket)
+            click.echo(click.style(f"  ☁️  GCS bucket: gs://{gcs_bucket}/", fg="cyan"))
+        except Exception as e:
+            raise click.ClickException(f"GCS access failed: {e}") from e
+
     click.echo()
 
     generator = InvoiceGenerator(
@@ -170,6 +188,44 @@ def main(
         click.echo(click.style(f"⚠ Errors ({len(errors)}):", fg="yellow"))
         for error in errors:
             click.echo(f"  - {error}")
+
+    if uploader and generated_files:
+        upload_success = 0
+        upload_failed = 0
+        upload_errors: list[str] = []
+
+        click.echo()
+        with click.progressbar(
+            generated_files,
+            label="Uploading to GCS",
+            show_pos=True,
+            show_percent=True,
+        ) as bar:
+            for file_path in bar:
+                result = uploader.upload_file(file_path)
+                if result.success:
+                    upload_success += 1
+                else:
+                    upload_failed += 1
+                    upload_errors.append(f"{file_path.name}: {result.error}")
+
+        click.echo()
+        if upload_failed == 0:
+            click.echo(
+                click.style(
+                    f"☁️  Uploaded: {upload_success}/{len(generated_files)} files to gs://{gcs_bucket}/",
+                    fg="green",
+                )
+            )
+        else:
+            click.echo(
+                click.style(
+                    f"☁️  Uploaded: {upload_success}/{len(generated_files)} files ({upload_failed} failed)",
+                    fg="yellow",
+                )
+            )
+            for error in upload_errors:
+                click.echo(click.style(f"  ⚠ {error}", fg="yellow"))
 
 
 if __name__ == "__main__":
