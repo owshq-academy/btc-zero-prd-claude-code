@@ -226,6 +226,8 @@ def _copy_to_failed_bucket(
 ) -> None:
     """Copy failed invoice to failed bucket with error metadata.
 
+    Files are flattened to the bucket root for simpler agentic monitoring.
+
     Args:
         storage: GCS adapter
         config: Application configuration
@@ -235,14 +237,17 @@ def _copy_to_failed_bucket(
     try:
         source_bucket, source_path = parse_gcs_uri(source_file)
 
+        # Flatten to root - extract just the filename
+        filename = source_path.split("/")[-1]
+
         storage.copy(
             source_bucket,
             source_path,
             config.failed_bucket,
-            source_path,
+            filename,  # Flattened to root
         )
 
-        error_path = f"{source_path}.error.json"
+        error_path = f"{filename}.error.json"
         error_data = json.dumps({
             "source_file": source_file,
             "error": error_message,
@@ -259,7 +264,7 @@ def _copy_to_failed_bucket(
             "Copied failed invoice to failed bucket",
             extra={
                 "source_file": source_file,
-                "failed_uri": f"gs://{config.failed_bucket}/{source_path}",
+                "failed_uri": f"gs://{config.failed_bucket}/{filename}",
             },
         )
 

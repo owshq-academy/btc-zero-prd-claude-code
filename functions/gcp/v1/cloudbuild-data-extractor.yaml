@@ -1,18 +1,63 @@
-steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-f'
-      - 'deploy/data_extractor.Dockerfile'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/data-extractor:$_TAG_NAME'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/data-extractor:latest'
-      - '.'
-
-images:
-  - 'gcr.io/$PROJECT_ID/data-extractor:$_TAG_NAME'
-  - 'gcr.io/$PROJECT_ID/data-extractor:latest'
+# Cloud Build configuration for Data Extractor
+# Builds and deploys the data-extractor Cloud Run function
+#
+# Usage (from this directory):
+#   gcloud builds submit --config cloudbuild-data-extractor.yaml .
+#
+# Required substitutions:
+#   _REGION: GCP region (default: us-central1)
 
 substitutions:
-  _TAG_NAME: v10-remove-session-id-param
+  _REGION: us-central1
+  _GEMINI_MODEL: gemini-2.0-flash-exp
+
+steps:
+  # Build data-extractor
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-data-extractor'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/data-extractor:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/data-extractor:latest'
+      - '-f'
+      - 'deploy/data_extractor.Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-data-extractor'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/data-extractor:$COMMIT_SHA'
+    waitFor: ['build-data-extractor']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-data-extractor-latest'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/data-extractor:latest'
+    waitFor: ['build-data-extractor']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-data-extractor'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'data-extractor'
+      - '--image=gcr.io/$PROJECT_ID/data-extractor:$COMMIT_SHA'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--memory=2Gi'
+      - '--timeout=540'
+      - '--no-allow-unauthenticated'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,PROCESSED_BUCKET=$PROJECT_ID-invoices-processed,FAILED_BUCKET=$PROJECT_ID-invoices-failed,EXTRACTED_TOPIC=invoice-extracted,GEMINI_MODEL=$_GEMINI_MODEL'
+    waitFor: ['push-data-extractor']
+
+images:
+  - 'gcr.io/$PROJECT_ID/data-extractor:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/data-extractor:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
