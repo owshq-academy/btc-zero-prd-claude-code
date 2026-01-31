@@ -46,6 +46,11 @@ INGESTION          PROCESSING                              STORAGE
     │           │              │              │              │
     └───────────┴──────────────┴──────────────┴──────────────┘
                           Pub/Sub (events)
+                               │
+                          ┌────┴────┐
+                          │   DLQ   │ ◀── Failed messages
+                          │Processor│
+                          └─────────┘
 
 OBSERVABILITY                              AUTONOMOUS OPS
 ─────────────                              ──────────────
@@ -60,9 +65,9 @@ OBSERVABILITY                              AUTONOMOUS OPS
 | Layer | Technology | Purpose |
 |-------|------------|---------|
 | **Cloud** | Google Cloud Platform | Primary infrastructure |
-| **Compute** | Cloud Run | Serverless functions |
-| **Messaging** | Pub/Sub | Event-driven communication |
-| **Storage** | GCS | File storage (input, processed, archive) |
+| **Compute** | Cloud Run Functions | Serverless event-driven compute |
+| **Messaging** | Pub/Sub | Event-driven communication with DLQ |
+| **Storage** | GCS | File storage (input, processed, archive, failed) |
 | **Data Warehouse** | BigQuery | Extracted invoice data |
 | **LLM** | Gemini 2.0 Flash | Document extraction |
 | **LLM Fallback** | OpenRouter (Claude 3.5/GPT-4o) | Backup provider |
@@ -70,7 +75,8 @@ OBSERVABILITY                              AUTONOMOUS OPS
 | **Validation** | Pydantic v2 | Structured output validation |
 | **IaC** | Terraform + Terragrunt | Infrastructure provisioning |
 | **CI/CD** | GitHub Actions | Automated testing and deployment |
-| **Code Review** | CodeRabbit | AI-powered PR review |
+| **Code Review** | CodeRabbit + Claude | AI-powered PR review |
+| **Security** | detect-secrets, Trivy | Secret scanning, vulnerability scanning |
 | **Autonomous Ops** | CrewAI | AI agents for monitoring |
 
 ---
@@ -166,12 +172,15 @@ invoice-extract validate data/output/UE-2026-001234.json
 
 ### Serverless Pipeline
 
-Four Cloud Run functions for scalable processing:
+Five Cloud Run functions for scalable processing:
 
-1. **tiff-to-png-converter** - Convert multi-page TIFF to PNG images
-2. **invoice-classifier** - Detect vendor type and validate structure
-3. **data-extractor** - Extract structured data using Gemini
-4. **bigquery-writer** - Write validated data to BigQuery
+| Function | Trigger | Purpose |
+|----------|---------|---------|
+| **tiff-to-png-converter** | GCS (Eventarc) | Convert multi-page TIFF to PNG images |
+| **invoice-classifier** | Pub/Sub | Detect vendor type and validate structure |
+| **data-extractor** | Pub/Sub | Extract structured data using Gemini |
+| **bigquery-writer** | Pub/Sub | Write validated data to BigQuery |
+| **dlq-processor** | Pub/Sub (DLQ) | Handle failed messages for retry |
 
 ### Autonomous Operations (CrewAI)
 
@@ -191,44 +200,97 @@ Three AI agents for self-monitoring:
 btc-zero-prd-claude-code/
 ├── src/                           # Main source code
 │   └── invoice_extractor/         # CLI extraction tool
+│       ├── cli.py                 # Command-line interface
+│       ├── extractor.py           # Extraction logic
+│       ├── image_processor.py     # Image processing
+│       ├── llm_gateway.py         # LLM abstraction
+│       ├── models.py              # Pydantic models
+│       └── validator.py           # Validation logic
 │
-├── functions/                     # Cloud Run functions
+├── functions/                     # Cloud Run Functions
 │   └── gcp/v1/
-│       ├── src/functions/         # Function implementations
+│       ├── src/functions/         # 5 Cloud Run functions
 │       │   ├── tiff_to_png/       # Image conversion
 │       │   ├── invoice_classifier/ # Vendor detection
 │       │   ├── data_extractor/    # LLM extraction
-│       │   └── bigquery_writer/   # Data warehouse writer
+│       │   ├── bigquery_writer/   # Data warehouse writer
+│       │   └── dlq_processor/     # Dead Letter Queue handler
 │       └── src/shared/            # Shared utilities
+│           ├── adapters/          # GCS, Pub/Sub, BigQuery, LLM, Observability
+│           ├── schemas/           # Pydantic models (invoice, messages)
+│           └── utils/             # Logging, config, GCS utilities
 │
 ├── gen/                           # Code generation tools
-│   └── synthetic_invoice_gen/     # Generate test invoices
-│
-├── infra/                         # Infrastructure as Code
-│   ├── modules/                   # Terraform modules
-│   │   ├── cloud-run/             # Cloud Run definitions
-│   │   ├── pubsub/                # Pub/Sub topics
-│   │   ├── gcs/                   # GCS buckets
-│   │   ├── bigquery/              # BigQuery dataset
-│   │   ├── iam/                   # Service accounts
-│   │   └── secrets/               # Secret Manager
-│   └── environments/              # Terragrunt environments
-│       ├── dev/
-│       └── prod/
+│   └── synthetic_invoice_gen/     # Generate synthetic test invoices
+│       └── src/invoice_gen/       # Invoice generation library
 │
 ├── tests/                         # Test suites
 │   └── smoke/                     # End-to-end smoke tests
+│       ├── cli.py                 # Smoke test CLI
+│       ├── runner.py              # Test orchestrator
+│       ├── stages/                # Pipeline test stages
+│       │   ├── generate.py        # Generate test invoices
+│       │   ├── upload.py          # Upload to GCS
+│       │   ├── process.py         # Trigger processing
+│       │   ├── validate.py        # Validate results
+│       │   ├── bigquery.py        # Check BigQuery
+│       │   └── logging.py         # Check logs
+│       └── validators/            # Field validation
+│
+├── infra/                         # Infrastructure as Code
+│   ├── modules/                   # Terraform modules
+│   │   ├── bigquery/              # BigQuery dataset/tables
+│   │   ├── cloud-run/             # Cloud Run functions
+│   │   ├── gcs/                   # GCS buckets
+│   │   ├── iam/                   # Service accounts & roles
+│   │   ├── pubsub/                # Topics, subs, DLQ
+│   │   └── secrets/               # Secret Manager
+│   └── environments/              # Terragrunt environments
+│       └── prod/                  # Production config
 │
 ├── design/                        # Architecture documents
-├── notes/                         # Meeting notes & requirements
-├── examples/                      # Sample invoice files (10 TIFFs)
-├── data/                          # Local data directories
+│   ├── gcp-cloud-run-fncs.md      # Cloud Run functions design
+│   ├── invoice-extractor-design.md
+│   ├── gcp-deployment-requirements.md
+│   └── infra-terraform-terragrunt-design.md
 │
-└── .claude/                       # Claude Code ecosystem
-    ├── agents/                    # 40 specialized AI agents
-    ├── commands/                  # 12 slash commands
-    ├── kb/                        # 8 knowledge base domains
-    └── sdd/                       # Spec-Driven Development
+├── notes/                         # Project meeting notes
+│   ├── 01-business-kickoff.md     # Business requirements
+│   ├── 02-technical-architecture.md
+│   ├── 03-data-pipeline-process.md
+│   ├── 04-data-ml-strategy.md
+│   ├── 05-devops-infrastructure.md
+│   ├── 06-autonomous-dataops.md
+│   └── summary-requirements.md    # Consolidated requirements
+│
+├── examples/                      # Sample invoice files
+│   ├── ubereats_*.tiff            # 2 UberEats invoices
+│   ├── doordash_*.tiff            # 2 DoorDash invoices
+│   ├── grubhub_*.tiff             # 2 Grubhub invoices
+│   ├── ifood_*.tiff               # 2 iFood invoices
+│   └── rappi_*.tiff               # 2 Rappi invoices
+│
+├── .github/                       # GitHub configuration
+│   ├── workflows/                 # CI/CD workflows
+│   │   ├── ci.yaml                # Lint, test, build, security
+│   │   ├── cd-dev.yaml            # Deploy to dev
+│   │   ├── cd-prod.yaml           # Deploy to production
+│   │   ├── terraform.yaml         # Infrastructure changes
+│   │   ├── claude-review.yaml     # AI code review
+│   │   └── smoke-tests.yaml       # E2E smoke tests
+│   ├── CODEOWNERS                 # Code ownership
+│   └── dependabot.yml             # Dependency updates
+│
+├── .claude/                       # Claude Code ecosystem
+│   ├── agents/                    # 40 specialized AI agents
+│   ├── commands/                  # 13 slash commands
+│   ├── kb/                        # 8 knowledge base domains
+│   └── sdd/                       # Spec-Driven Development
+│
+├── pyproject.toml                 # Project configuration
+├── .pre-commit-config.yaml        # Pre-commit hooks
+├── .coderabbit.yaml               # CodeRabbit configuration
+└── .secrets.baseline              # detect-secrets baseline
 ```
 
 ---
@@ -240,6 +302,10 @@ btc-zero-prd-claude-code/
 ```bash
 # Install with dev dependencies
 pip install -e ".[dev]"
+
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
 
 # Run linter
 ruff check .
@@ -291,6 +357,20 @@ pytest tests/smoke/ -v --skip-logging
 5. **BigQuery** - Verify row in BigQuery
 6. **Logging** - Check for pipeline errors
 
+### Pre-commit Hooks
+
+The project uses pre-commit hooks for quality enforcement:
+
+```yaml
+# Installed hooks:
+- ruff (linting + formatting)
+- detect-secrets (prevent secret commits)
+- trailing-whitespace
+- end-of-file-fixer
+- check-yaml
+- check-added-large-files
+```
+
 ### Code Quality
 
 The project uses:
@@ -300,6 +380,7 @@ The project uses:
 - **pytest** for testing
 - **Pydantic v2** for data validation
 - **Type hints** on all function signatures
+- **detect-secrets** for secret scanning
 
 ---
 
@@ -313,16 +394,23 @@ The project uses:
 | **CD Dev** | Push to main | Deploy to dev environment |
 | **CD Prod** | Manual/tag | Deploy to production |
 | **Terraform** | infra/** changes | Plan and apply infrastructure |
-| **Claude Review** | PR | AI code review |
+| **Claude Review** | PR | AI-powered code review |
+| **Smoke Tests** | Workflow dispatch | End-to-end pipeline validation |
 
 ### CI Pipeline Stages
 
 ```text
 ┌─────────┐   ┌────────────┐   ┌────────────┐   ┌──────────────┐   ┌───────────────┐
 │  Lint   │──▶│ Type Check │──▶│ Unit Tests │──▶│ Docker Build │──▶│ Security Scan │
-│ (Ruff)  │   │   (mypy)   │   │  (pytest)  │   │  (4 images)  │   │   (Trivy)     │
+│ (Ruff)  │   │   (mypy)   │   │  (pytest)  │   │ (5 images)   │   │   (Trivy)     │
 └─────────┘   └────────────┘   └────────────┘   └──────────────┘   └───────────────┘
 ```
+
+### Code Review
+
+All PRs are reviewed by:
+- **CodeRabbit** - AI-powered static analysis
+- **Claude Code** - Architectural review via GitHub Actions
 
 ---
 
@@ -332,11 +420,11 @@ The project uses:
 
 | Module | Purpose |
 |--------|---------|
-| `cloud-run` | Cloud Run function definitions |
-| `pubsub` | Pub/Sub topics and subscriptions |
-| `gcs` | GCS bucket configurations |
 | `bigquery` | BigQuery dataset and tables |
+| `cloud-run` | Cloud Run function definitions |
+| `gcs` | GCS bucket configurations |
 | `iam` | Service accounts and permissions |
+| `pubsub` | Pub/Sub topics, subscriptions, DLQ |
 | `secrets` | Secret Manager secrets |
 
 ### GCS Buckets
@@ -377,7 +465,7 @@ The project uses:
 | Date | Milestone |
 |------|-----------|
 | Jan 15, 2026 | Project kickoff |
-| Feb 7, 2026 | All 4 functions implemented |
+| Jan 31, 2026 | All 5 functions implemented |
 | Feb 28, 2026 | MVP demo to stakeholders |
 | Mar 15, 2026 | Accuracy validation complete |
 | **Apr 1, 2026** | **Production launch** |
@@ -389,16 +477,11 @@ The project uses:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Run linting and tests (`ruff check . && pytest`)
-4. Commit your changes (`git commit -m 'Add amazing feature'`)
-5. Push to the branch (`git push origin feature/amazing-feature`)
-6. Open a Pull Request
-
-### Code Review
-
-All PRs are reviewed by:
-- **CodeRabbit** - AI-powered static analysis
-- **Claude Code** - Architectural review
+3. Install pre-commit hooks (`pre-commit install`)
+4. Run linting and tests (`ruff check . && pytest`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
 ---
 

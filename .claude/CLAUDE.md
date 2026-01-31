@@ -310,14 +310,15 @@ In PROMPT.md files, reference agents with `@agent-name`:
 
 ### Detected Patterns
 
-| Pattern | Files | Example |
-| ------- | ----- | ------- |
-| Pydantic Models | 12 | `functions/gcp/v1/src/shared/schemas/invoice.py` |
-| Dataclasses | 15 | `functions/gcp/v1/src/shared/adapters/observability.py` |
+| Pattern | Count | Example Files |
+| ------- | ----- | ------------- |
+| Pydantic Models | 20 | `functions/gcp/v1/src/shared/schemas/invoice.py`, `src/invoice_extractor/models.py` |
+| Dataclasses | 20 | `functions/gcp/v1/src/shared/adapters/observability.py`, `tests/smoke/runner.py` |
 | Adapter Pattern | 5 | `shared/adapters/storage.py`, `messaging.py`, `bigquery.py`, `llm.py`, `observability.py` |
 | Functions Framework | 5 | All `main.py` in Cloud Run functions |
-| Computed Fields | 3 | `LineItem.amount`, `ExtractedInvoice.line_item_count` |
-| Model Validators | 2 | `ExtractedInvoice.validate_dates()`, `validate_line_items_total()` |
+| Computed Fields | 15 | `LineItem.amount`, `ExtractedInvoice.line_item_count`, `gen/schemas/invoice.py` |
+| Model Validators | 7 | `ExtractedInvoice.validate_dates()`, `validate_line_items_total()` |
+| Test Functions | 196 | Across 13 test files in `tests/`, `functions/gcp/v1/tests/`, `gen/tests/` |
 
 ### Code Quality Rules
 
@@ -406,6 +407,19 @@ infra/environments/
 
 ---
 
+## CI/CD Pipelines
+
+| Workflow | Trigger | Purpose |
+| -------- | ------- | ------- |
+| `ci.yaml` | Push/PR | Lint, test, and validate code changes |
+| `cd-dev.yaml` | Push to develop | Deploy to development environment |
+| `cd-prod.yaml` | Push to main | Deploy to production environment |
+| `terraform.yaml` | Changes to infra/ | Terraform plan and apply |
+| `smoke-tests.yaml` | Post-deploy | End-to-end pipeline validation |
+| `claude-review.yaml` | PR | AI-powered code review with Claude |
+
+---
+
 ## MCP Tools Available
 
 | MCP Server | Purpose |
@@ -486,6 +500,7 @@ infra/environments/
 
 | Date | Changes |
 | ---- | ------- |
+| 2026-01-31 | Sync: Updated pattern counts (Pydantic: 20, Dataclasses: 20, Computed Fields: 15, Model Validators: 7); added 196 test functions; added CI/CD Pipelines section with 6 GitHub Actions workflows |
 | 2026-01-31 | Sync: Added functions/gcp/v1/ with 5 Cloud Run functions, infra/ with Terraform modules, tests/smoke/, src/invoice_extractor/; updated shipped features (5); added /readme-maker command |
 | 2026-01-29 | Sync: Added design/, archive/, examples folders; updated agent counts per category |
 | 2026-01-29 | Initial CLAUDE.md created via /sync-context |
