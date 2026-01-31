@@ -46,14 +46,37 @@ def handle_dlq_message(cloud_event: CloudEvent) -> None:
     storage = GCSAdapter(project_id=config.project_id)
 
     try:
-        message_data = cloud_event.data.get("message", {})
+        # Log raw event data for debugging
+        logger.info(
+            "Received DLQ cloud event",
+            extra={
+                "event_type": cloud_event.get("type", "unknown"),
+                "event_source": cloud_event.get("source", "unknown"),
+                "data_keys": list(cloud_event.data.keys()) if cloud_event.data else [],
+            },
+        )
+
+        # Handle both direct message format and nested message format
+        message_data = cloud_event.data
+        if "message" in message_data:
+            message_data = message_data["message"]
+
         raw_data = message_data.get("data", "")
 
+        # Try to decode the message
+        original_message = {}
         if raw_data:
-            decoded_data = base64.b64decode(raw_data)
-            original_message = json.loads(decoded_data)
-        else:
-            original_message = {}
+            try:
+                # First try base64 decode (standard Pub/Sub format)
+                decoded_data = base64.b64decode(raw_data)
+                original_message = json.loads(decoded_data)
+            except Exception:
+                # If that fails, try direct JSON parse (might be raw JSON)
+                try:
+                    original_message = json.loads(raw_data)
+                except Exception:
+                    # Store raw data as-is if parsing fails
+                    original_message = {"raw_data": raw_data, "parse_error": True}
 
         attributes = message_data.get("attributes", {})
         subscription = cloud_event.data.get("subscription", "unknown")

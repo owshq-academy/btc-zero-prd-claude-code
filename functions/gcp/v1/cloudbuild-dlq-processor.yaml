@@ -9,7 +9,6 @@
 
 substitutions:
   _REGION: us-central1
-  _FAILED_BUCKET: ${PROJECT_ID}-invoices-failed
 
 steps:
   # Build dlq-processor
@@ -52,7 +51,7 @@ steps:
       - '--memory=256Mi'
       - '--timeout=60'
       - '--no-allow-unauthenticated'
-      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,FAILED_BUCKET=$_FAILED_BUCKET'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,FAILED_BUCKET=$PROJECT_ID-invoices-failed'
     waitFor: ['push-dlq-processor']
 
 images:
