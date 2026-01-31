@@ -10,7 +10,7 @@
 | **Date** | 2026-01-30 |
 | **Author** | design-agent |
 | **DEFINE** | [DEFINE_SMOKE_TEST.md](./DEFINE_SMOKE_TEST.md) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Shipped |
 
 ---
 

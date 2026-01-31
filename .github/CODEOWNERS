@@ -1,0 +1,57 @@
+# CODEOWNERS - Invoice Processing Pipeline
+# Defines required reviewers for different parts of the codebase
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Format: <pattern> <@owner1> <@owner2> ...
+# Owners are notified and required to approve PRs touching their paths
+
+# ===========================================
+# Default Owners (fallback for everything)
+# ===========================================
+*                                   @owshq-academy
+
+# ===========================================
+# Cloud Run Functions (Core Pipeline)
+# ===========================================
+# Critical business logic - requires careful review
+/functions/gcp/v1/src/functions/    @owshq-academy
+/functions/gcp/v1/src/shared/       @owshq-academy
+
+# ===========================================
+# Infrastructure as Code
+# ===========================================
+# High-impact changes - infra team must review
+/infra/                             @owshq-academy
+
+# ===========================================
+# CI/CD Workflows
+# ===========================================
+# Pipeline changes can break everything
+/.github/workflows/                 @owshq-academy
+/.github/dependabot.yml             @owshq-academy
+
+# ===========================================
+# Schemas and Contracts
+# ===========================================
+# Breaking changes affect multiple systems
+**/schemas/                         @owshq-academy
+**/*schema*.py                      @owshq-academy
+**/*schema*.yaml                    @owshq-academy
+
+# ===========================================
+# Configuration Files
+# ===========================================
+# Project-wide settings
+/pyproject.toml                     @owshq-academy
+/.coderabbit.yaml                   @owshq-academy
+/.pre-commit-config.yaml            @owshq-academy
+/CLAUDE.md                          @owshq-academy
+/.claude/                           @owshq-academy
+
+# ===========================================
+# Documentation
+# ===========================================
+# Docs can be reviewed by anyone
+/docs/                              @owshq-academy
+*.md                                @owshq-academy

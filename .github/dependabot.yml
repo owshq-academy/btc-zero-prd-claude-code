@@ -1,0 +1,96 @@
+# Dependabot Configuration - Invoice Processing Pipeline
+# Automated dependency updates for security and maintenance
+#
+# Docs: https://docs.github.com/en/code-security/dependabot
+
+version: 2
+
+updates:
+  # ===========================================
+  # Python Dependencies
+  # ===========================================
+  - package-ecosystem: "pip"
+    directory: "/functions/gcp/v1"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+    reviewers:
+      - "owshq-academy"
+    groups:
+      # Group minor/patch updates together
+      python-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/gen/synthetic_invoice_gen"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "python"
+      - "tooling"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # ===========================================
+  # Docker Base Images
+  # ===========================================
+  - package-ecosystem: "docker"
+    directory: "/functions/gcp/v1/deploy"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(docker)"
+
+  # ===========================================
+  # GitHub Actions
+  # ===========================================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci-cd"
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      # Group all GH Actions updates
+      github-actions:
+        patterns:
+          - "*"
+
+  # ===========================================
+  # Terraform Providers (if using .terraform-version)
+  # ===========================================
+  - package-ecosystem: "terraform"
+    directory: "/infra"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "terraform"
+    commit-message:
+      prefix: "chore(infra)"

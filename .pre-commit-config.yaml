@@ -1,0 +1,146 @@
+# Pre-commit Configuration - Invoice Processing Pipeline
+# Local hooks that run before each commit to catch issues early
+#
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# Update hooks: pre-commit autoupdate
+#
+# Docs: https://pre-commit.com/
+
+default_language_version:
+  python: python3.11
+
+# Run hooks in parallel for speed
+default_stages: [commit]
+
+repos:
+  # ===========================================
+  # General File Checks
+  # ===========================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # Prevent large files from being committed
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+
+      # Ensure files end with newline
+      - id: end-of-file-fixer
+        exclude: '\.svg$'
+
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        exclude: '\.md$'
+
+      # Validate YAML syntax
+      - id: check-yaml
+        args: ['--unsafe']  # Allow custom tags
+
+      # Validate JSON syntax
+      - id: check-json
+
+      # Validate TOML syntax
+      - id: check-toml
+
+      # Prevent commits to main/master
+      - id: no-commit-to-branch
+        args: ['--branch', 'main', '--branch', 'master']
+
+      # Check for merge conflict markers
+      - id: check-merge-conflict
+
+      # Detect private keys
+      - id: detect-private-key
+
+      # Check Python AST validity
+      - id: check-ast
+
+  # ===========================================
+  # Python: Ruff (Linting + Formatting)
+  # ===========================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.4
+    hooks:
+      # Linter - runs first, can auto-fix
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+        types_or: [python, pyi]
+
+      # Formatter - runs after linter
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # ===========================================
+  # Python: Type Checking (mypy)
+  # ===========================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
+    hooks:
+      - id: mypy
+        args: ['--ignore-missing-imports', '--no-error-summary']
+        additional_dependencies:
+          - types-requests
+          - types-Pillow
+          - pydantic>=2.0
+        # Only check main source files, not tests
+        files: ^(functions/gcp/v1/src/|src/)
+        pass_filenames: false
+        # Run on the whole directory for better type inference
+        entry: mypy functions/gcp/v1/src --ignore-missing-imports
+
+  # ===========================================
+  # Security: Detect Secrets
+  # ===========================================
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: '(\.lock|\.yaml|\.yml)$'
+
+  # ===========================================
+  # Shell Scripts
+  # ===========================================
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: ['--severity=warning']
+
+  # ===========================================
+  # Dockerfile Linting
+  # ===========================================
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: ['--ignore', 'DL3008', '--ignore', 'DL3013']  # Ignore version pinning warnings
+
+  # ===========================================
+  # Terraform
+  # ===========================================
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.88.0
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+      - id: terraform_tflint
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+
+# ===========================================
+# CI Configuration
+# ===========================================
+ci:
+  autofix_commit_msg: |
+    chore(pre-commit): auto-fix from pre-commit hooks
+
+    Co-Authored-By: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: 'chore(pre-commit): update hook versions'
+  autoupdate_schedule: weekly
+  skip: [mypy, terraform_validate, terraform_tflint]  # Skip heavy checks in CI
+  submodules: false

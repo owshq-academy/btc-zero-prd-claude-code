@@ -10,7 +10,7 @@
 | **Date** | 2026-01-30 |
 | **Author** | design-agent |
 | **DEFINE** | [DEFINE_GCS_UPLOAD.md](./DEFINE_GCS_UPLOAD.md) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Shipped |
 
 ---
 

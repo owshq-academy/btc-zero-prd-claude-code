@@ -29,6 +29,11 @@ INGESTION          PROCESSING                              STORAGE
     │           │              │              │              │
     └───────────┴──────────────┴──────────────┴──────────────┘
                           Pub/Sub (events)
+                               │
+                          ┌────┴────┐
+                          │   DLQ   │ ◀── Failed messages
+                          │Processor│
+                          └─────────┘
 
 OBSERVABILITY                              AUTONOMOUS OPS
 ─────────────                              ──────────────
@@ -41,14 +46,14 @@ OBSERVABILITY                              AUTONOMOUS OPS
 | Stage | Technology | Purpose |
 | ----- | ---------- | ------- |
 | Cloud | GCP | Primary infrastructure |
-| Compute | Cloud Run | Serverless functions |
-| Messaging | Pub/Sub | Event-driven pipeline |
+| Compute | Cloud Run Functions | Serverless event-driven functions |
+| Messaging | Pub/Sub | Event-driven pipeline with DLQ |
 | Storage | GCS | File storage (input, processed, archive) |
 | Data Warehouse | BigQuery | Extracted invoice data |
 | LLM | Gemini 2.0 Flash | Document extraction |
 | LLM Fallback | OpenRouter | Backup provider |
 | LLMOps | LangFuse | LLM observability |
-| Validation | Pydantic | Structured output validation |
+| Validation | Pydantic v2 | Structured output validation |
 | IaC | Terraform + Terragrunt | Infrastructure provisioning |
 | Autonomous Ops | CrewAI | AI agents for monitoring |
 
@@ -58,15 +63,67 @@ OBSERVABILITY                              AUTONOMOUS OPS
 
 ```text
 btc-zero-prd-claude-code/
-├── src/                           # Main source code (Python)
-│   └── __init__.py
+├── src/                           # Main source code
+│   ├── __init__.py
+│   └── invoice_extractor/         # Core extraction library
+│       ├── cli.py                 # CLI interface
+│       ├── extractor.py           # Extraction logic
+│       ├── image_processor.py     # Image processing
+│       ├── llm_gateway.py         # LLM abstraction
+│       ├── models.py              # Pydantic models
+│       ├── validator.py           # Validation logic
+│       └── tests/                 # Unit & integration tests
+│
+├── functions/                     # Cloud Run Functions
+│   └── gcp/v1/                    # GCP functions v1
+│       ├── src/
+│       │   ├── functions/         # 5 Cloud Run functions
+│       │   │   ├── tiff_to_png/   # TIFF→PNG converter
+│       │   │   ├── invoice_classifier/  # Document classification
+│       │   │   ├── data_extractor/      # Gemini extraction
+│       │   │   ├── bigquery_writer/     # BigQuery loader
+│       │   │   └── dlq_processor/       # Dead Letter Queue handler
+│       │   └── shared/            # Shared utilities
+│       │       ├── adapters/      # GCS, Pub/Sub, BigQuery, LLM
+│       │       ├── schemas/       # Pydantic models
+│       │       └── utils/         # Logging, GCS utils
+│       └── tests/                 # Function tests
 │
 ├── gen/                           # Code generation tools
-│   └── synthetic-invoice-gen/     # Synthetic test data generator
+│   └── synthetic_invoice_gen/     # Synthetic test data generator
 │       └── src/invoice_gen/       # Invoice generation library
 │
+├── tests/                         # Test suites
+│   └── smoke/                     # End-to-end smoke tests
+│       ├── cli.py                 # Smoke test CLI
+│       ├── runner.py              # Test orchestrator
+│       ├── stages/                # Pipeline test stages
+│       │   ├── generate.py        # Generate test invoices
+│       │   ├── upload.py          # Upload to GCS
+│       │   ├── process.py         # Trigger processing
+│       │   ├── validate.py        # Validate results
+│       │   ├── bigquery.py        # Check BigQuery
+│       │   └── logging.py         # Check logs
+│       └── validators/            # Field validation
+│
+├── infra/                         # Infrastructure as Code
+│   ├── modules/                   # Terraform modules
+│   │   ├── bigquery/              # BigQuery dataset/tables
+│   │   ├── cloud-run/             # Cloud Run functions
+│   │   ├── gcs/                   # GCS buckets
+│   │   ├── iam/                   # Service accounts & roles
+│   │   ├── pubsub/                # Topics, subs, DLQ
+│   │   └── secrets/               # Secret Manager
+│   └── environments/              # Terragrunt environments
+│       └── prod/                  # Production config
+│
 ├── design/                        # Architecture design documents
-│   └── gcp-cloud-run-fncs.md      # Cloud Run functions v2 architecture
+│   ├── gcp-cloud-run-fncs.md      # Cloud Run functions design
+│   ├── invoice-extractor-design.md
+│   ├── invoice-extractor-requirements.md
+│   ├── gcp-deployment-requirements.md
+│   ├── infra-terraform-terragrunt-design.md
+│   └── data-ops-crew-ai-requirements.md
 │
 ├── notes/                         # Project meeting notes
 │   ├── 01-business-kickoff.md
@@ -78,8 +135,8 @@ btc-zero-prd-claude-code/
 │   └── summary-requirements.md    # Consolidated requirements
 │
 ├── archive/                       # Historical versions
-│   ├── sdd-agent-spec-v4.2.zip    # Previous SDD specification
-│   └── dev-loop-v1.1.zip          # Previous Dev Loop version
+│   ├── sdd-agent-spec-v4.2.zip
+│   └── dev-loop-v1.1.zip
 │
 ├── .claude/                       # Claude Code ecosystem
 │   ├── agents/                    # 40 specialized agents
@@ -93,15 +150,15 @@ btc-zero-prd-claude-code/
 │   │   ├── exploration/           # Codebase exploration (2)
 │   │   └── workflow/              # SDD pipeline agents (6)
 │   │
-│   ├── commands/                  # 12 slash commands
-│   │   ├── core/                  # /memory, /sync-context
+│   ├── commands/                  # 13 slash commands
+│   │   ├── core/                  # /memory, /sync-context, /readme-maker
 │   │   ├── dev/                   # /dev (Dev Loop)
 │   │   ├── knowledge/             # /create-kb
 │   │   ├── review/                # /review
 │   │   └── workflow/              # SDD commands
 │   │
 │   ├── kb/                        # Knowledge Base (8 domains)
-│   │   ├── _templates/            # KB domain templates
+│   │   ├── _templates/
 │   │   ├── pydantic/
 │   │   ├── gcp/
 │   │   ├── gemini/
@@ -112,22 +169,58 @@ btc-zero-prd-claude-code/
 │   │   └── openrouter/
 │   │
 │   ├── sdd/                       # Spec-Driven Development
-│   │   ├── architecture/          # Architecture documents
+│   │   ├── architecture/
 │   │   ├── features/              # Active DEFINE/DESIGN docs
 │   │   ├── reports/               # BUILD reports
-│   │   ├── archive/               # Shipped features
-│   │   ├── examples/              # Reference implementations
-│   │   └── templates/             # Document templates
+│   │   ├── archive/               # 5 shipped features
+│   │   ├── examples/
+│   │   └── templates/
 │   │
 │   └── dev/                       # Dev Loop (Level 2)
-│       ├── tasks/                 # PROMPT files
-│       ├── progress/              # Session recovery
-│       ├── logs/                  # Execution logs
-│       ├── examples/              # Reference PROMPT examples
-│       └── templates/             # PROMPT templates
+│       ├── tasks/
+│       ├── progress/
+│       ├── logs/
+│       ├── examples/
+│       └── templates/
 │
-└── .gitignore
+└── pyproject.toml                 # Project configuration
 ```
+
+---
+
+## Cloud Run Functions (GCP v1)
+
+| Function | Trigger | Purpose |
+| -------- | ------- | ------- |
+| `tiff_to_png` | GCS (eventarc) | Convert TIFF to PNG for LLM processing |
+| `invoice_classifier` | Pub/Sub | Classify document type (invoice vs other) |
+| `data_extractor` | Pub/Sub | Extract data using Gemini 2.0 Flash |
+| `bigquery_writer` | Pub/Sub | Write extracted data to BigQuery |
+| `dlq_processor` | Pub/Sub (DLQ) | Handle failed messages for retry |
+
+### Shared Components
+
+| Component | Path | Purpose |
+| --------- | ---- | ------- |
+| Storage Adapter | `shared/adapters/storage.py` | GCS operations |
+| Messaging Adapter | `shared/adapters/messaging.py` | Pub/Sub operations |
+| BigQuery Adapter | `shared/adapters/bigquery.py` | BigQuery operations |
+| LLM Adapter | `shared/adapters/llm.py` | Gemini/OpenRouter abstraction |
+| Observability | `shared/adapters/observability.py` | LangFuse integration |
+| Invoice Schema | `shared/schemas/invoice.py` | Pydantic extraction models |
+| Message Schema | `shared/schemas/messages.py` | Pub/Sub message models |
+
+---
+
+## Shipped Features (SDD Archive)
+
+| Feature | Shipped | Description |
+| ------- | ------- | ----------- |
+| INVOICE_PIPELINE | 2026-01-30 | Core 4-function pipeline |
+| GCS_UPLOAD | 2026-01-31 | GCS upload for invoice generator |
+| LANGFUSE_OBSERVABILITY | 2026-01-31 | LLM observability integration |
+| SMOKE_TEST | 2026-01-31 | End-to-end smoke test framework |
+| TERRAFORM_TERRAGRUNT_INFRA | 2026-01-31 | Infrastructure as Code |
 
 ---
 
@@ -213,16 +306,18 @@ In PROMPT.md files, reference agents with `@agent-name`:
 - **Testing:** pytest with -v --tb=short
 - **Validation:** Pydantic v2 for all data models
 - **Package Management:** pyproject.toml with hatchling
+- **Type Hints:** Required on all function signatures
 
 ### Detected Patterns
 
-| Pattern | Usage | Example |
+| Pattern | Files | Example |
 | ------- | ----- | ------- |
-| Pydantic Models | Data validation, LLM output | `gen/synthetic-invoice-gen/src/invoice_gen/schemas/` |
-| Adapter Pattern | Cloud service abstraction | Architecture for multi-cloud portability |
-| Event-Driven | Pipeline communication | Pub/Sub between Cloud Run functions |
-| Dataclasses | Simple data containers | Invoice generation models |
-| Click CLI | Command-line interfaces | `invoice-gen` CLI tool |
+| Pydantic Models | 12 | `functions/gcp/v1/src/shared/schemas/invoice.py` |
+| Dataclasses | 15 | `functions/gcp/v1/src/shared/adapters/observability.py` |
+| Adapter Pattern | 5 | `shared/adapters/storage.py`, `messaging.py`, `bigquery.py`, `llm.py`, `observability.py` |
+| Functions Framework | 5 | All `main.py` in Cloud Run functions |
+| Computed Fields | 3 | `LineItem.amount`, `ExtractedInvoice.line_item_count` |
+| Model Validators | 2 | `ExtractedInvoice.validate_dates()`, `validate_line_items_total()` |
 
 ### Code Quality Rules
 
@@ -230,6 +325,8 @@ In PROMPT.md files, reference agents with `@agent-name`:
 2. **Type hints required** - All function signatures must be typed
 3. **Structured logging** - Use structured JSON logging in Cloud Run
 4. **Adapter interfaces** - Use adapters for cloud services (future portability)
+5. **Computed fields** - Use `@computed_field` for derived values
+6. **Model validators** - Use `@model_validator` for cross-field validation
 
 ---
 
@@ -249,6 +346,7 @@ In PROMPT.md files, reference agents with `@agent-name`:
 | `/create-pr` | Create pull requests |
 | `/memory` | Save session insights |
 | `/sync-context` | Update CLAUDE.md with project context |
+| `/readme-maker` | Generate comprehensive README |
 
 ---
 
@@ -276,6 +374,34 @@ In PROMPT.md files, reference agents with `@agent-name`:
 ├── concepts/          # Core concepts
 ├── patterns/          # Implementation patterns
 └── specs/             # YAML specifications (optional)
+```
+
+---
+
+## Infrastructure (Terraform + Terragrunt)
+
+### Terraform Modules
+
+| Module | Resources | Purpose |
+| ------ | --------- | ------- |
+| `bigquery` | Dataset, tables | Invoice data storage |
+| `cloud-run` | Functions, triggers | Serverless compute |
+| `gcs` | Buckets | File storage (input, processed, archive) |
+| `iam` | Service accounts, roles | Least-privilege access |
+| `pubsub` | Topics, subscriptions, DLQ | Event messaging |
+| `secrets` | Secret Manager | API keys, credentials |
+
+### Terragrunt Environments
+
+```text
+infra/environments/
+└── prod/
+    ├── bigquery/terragrunt.hcl
+    ├── cloud-run/terragrunt.hcl
+    ├── gcs/terragrunt.hcl
+    ├── iam/terragrunt.hcl
+    ├── pubsub/terragrunt.hcl
+    └── secrets/terragrunt.hcl
 ```
 
 ---
@@ -318,7 +444,9 @@ In PROMPT.md files, reference agents with `@agent-name`:
 | Date | Milestone |
 | ---- | --------- |
 | Jan 15, 2026 | Project kickoff |
-| Feb 7, 2026 | All 4 functions implemented |
+| Jan 30, 2026 | Invoice Pipeline shipped |
+| Jan 31, 2026 | GCS Upload, LangFuse, Smoke Test, Terraform shipped |
+| Feb 7, 2026 | All 5 functions implemented |
 | Feb 28, 2026 | MVP demo to stakeholders |
 | Mar 15, 2026 | Accuracy validation complete |
 | **Apr 1, 2026** | **Production launch** |
@@ -343,6 +471,8 @@ In PROMPT.md files, reference agents with `@agent-name`:
 - **Requirements:** Start with [notes/summary-requirements.md](notes/summary-requirements.md)
 - **Architecture:** See [.claude/sdd/architecture/ARCHITECTURE.md](.claude/sdd/architecture/ARCHITECTURE.md)
 - **Cloud Run Design:** See [design/gcp-cloud-run-fncs.md](design/gcp-cloud-run-fncs.md)
+- **Invoice Extractor:** See [design/invoice-extractor-design.md](design/invoice-extractor-design.md)
+- **Infrastructure:** See [design/infra-terraform-terragrunt-design.md](design/infra-terraform-terragrunt-design.md)
 - **SDD Workflow:** See [.claude/sdd/_index.md](.claude/sdd/_index.md)
 - **SDD Examples:** See [.claude/sdd/examples/](.claude/sdd/examples/)
 - **Dev Loop:** See [.claude/dev/_index.md](.claude/dev/_index.md)
@@ -356,5 +486,6 @@ In PROMPT.md files, reference agents with `@agent-name`:
 
 | Date | Changes |
 | ---- | ------- |
+| 2026-01-31 | Sync: Added functions/gcp/v1/ with 5 Cloud Run functions, infra/ with Terraform modules, tests/smoke/, src/invoice_extractor/; updated shipped features (5); added /readme-maker command |
 | 2026-01-29 | Sync: Added design/, archive/, examples folders; updated agent counts per category |
 | 2026-01-29 | Initial CLAUDE.md created via /sync-context |

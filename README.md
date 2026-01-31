@@ -5,6 +5,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Pydantic v2](https://img.shields.io/badge/pydantic-v2-green.svg)](https://docs.pydantic.dev/)
 [![GCP](https://img.shields.io/badge/cloud-GCP-4285F4.svg)](https://cloud.google.com/)
+[![Terraform](https://img.shields.io/badge/IaC-Terraform-623CE4.svg)](https://www.terraform.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -64,10 +65,12 @@ OBSERVABILITY                              AUTONOMOUS OPS
 | **Storage** | GCS | File storage (input, processed, archive) |
 | **Data Warehouse** | BigQuery | Extracted invoice data |
 | **LLM** | Gemini 2.0 Flash | Document extraction |
-| **LLM Fallback** | OpenRouter | Backup provider (Claude 3.5/GPT-4o) |
+| **LLM Fallback** | OpenRouter (Claude 3.5/GPT-4o) | Backup provider |
 | **LLMOps** | LangFuse | LLM observability |
 | **Validation** | Pydantic v2 | Structured output validation |
 | **IaC** | Terraform + Terragrunt | Infrastructure provisioning |
+| **CI/CD** | GitHub Actions | Automated testing and deployment |
+| **Code Review** | CodeRabbit | AI-powered PR review |
 | **Autonomous Ops** | CrewAI | AI agents for monitoring |
 
 ---
@@ -89,10 +92,13 @@ cd btc-zero-prd-claude-code
 
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install the package
 pip install -e .
+
+# Install dev dependencies (optional)
+pip install -e ".[dev]"
 ```
 
 ### Environment Setup
@@ -105,6 +111,11 @@ OPENROUTER_API_KEY=sk-or-v1-your-key-here
 
 # Optional (for Gemini)
 GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+GCP_REGION=us-central1
+
+# Optional (for LangFuse observability)
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
 ```
 
 ### Basic Usage
@@ -124,19 +135,19 @@ invoice-extract validate data/output/UE-2026-001234.json
 
 ## Features
 
-### 🔍 AI-Powered Extraction
+### AI-Powered Extraction
 
 - **Multi-modal vision AI** using Gemini 2.0 Flash for document understanding
 - **Vendor-specific prompts** optimized for UberEats, DoorDash, Grubhub, iFood, and Rappi
 - **Automatic fallback** to OpenRouter when primary provider fails
 
-### ✅ Schema Validation
+### Schema Validation
 
 - **Pydantic v2 models** with strict type validation
 - **Business rule validation** (date logic, commission calculations, totals)
 - **Confidence scoring** per field for quality assurance
 
-### 📊 Extraction Schema
+### Extraction Schema
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -153,7 +164,7 @@ invoice-extract validate data/output/UE-2026-001234.json
 | `currency` | String | BRL, USD, EUR, etc. |
 | `line_items` | Array | Individual line items |
 
-### 🏗️ Serverless Pipeline
+### Serverless Pipeline
 
 Four Cloud Run functions for scalable processing:
 
@@ -162,7 +173,7 @@ Four Cloud Run functions for scalable processing:
 3. **data-extractor** - Extract structured data using Gemini
 4. **bigquery-writer** - Write validated data to BigQuery
 
-### 🤖 Autonomous Operations (CrewAI)
+### Autonomous Operations (CrewAI)
 
 Three AI agents for self-monitoring:
 
@@ -180,11 +191,6 @@ Three AI agents for self-monitoring:
 btc-zero-prd-claude-code/
 ├── src/                           # Main source code
 │   └── invoice_extractor/         # CLI extraction tool
-│       ├── cli.py                 # Click CLI commands
-│       ├── extractor.py           # Extraction logic
-│       ├── llm_gateway.py         # LLM provider abstraction
-│       ├── models.py              # Pydantic schemas
-│       └── validator.py           # Multi-layer validation
 │
 ├── functions/                     # Cloud Run functions
 │   └── gcp/v1/
@@ -194,79 +200,35 @@ btc-zero-prd-claude-code/
 │       │   ├── data_extractor/    # LLM extraction
 │       │   └── bigquery_writer/   # Data warehouse writer
 │       └── src/shared/            # Shared utilities
-│           ├── adapters/          # Cloud service adapters
-│           ├── schemas/           # Shared Pydantic models
-│           └── utils/             # Logging, config
 │
 ├── gen/                           # Code generation tools
 │   └── synthetic_invoice_gen/     # Generate test invoices
 │
+├── infra/                         # Infrastructure as Code
+│   ├── modules/                   # Terraform modules
+│   │   ├── cloud-run/             # Cloud Run definitions
+│   │   ├── pubsub/                # Pub/Sub topics
+│   │   ├── gcs/                   # GCS buckets
+│   │   ├── bigquery/              # BigQuery dataset
+│   │   ├── iam/                   # Service accounts
+│   │   └── secrets/               # Secret Manager
+│   └── environments/              # Terragrunt environments
+│       ├── dev/
+│       └── prod/
+│
+├── tests/                         # Test suites
+│   └── smoke/                     # End-to-end smoke tests
+│
 ├── design/                        # Architecture documents
 ├── notes/                         # Meeting notes & requirements
-├── examples/                      # Sample invoice files
+├── examples/                      # Sample invoice files (10 TIFFs)
 ├── data/                          # Local data directories
-│   ├── input/                     # Input invoice files
-│   ├── processed/                 # Converted images
-│   ├── output/                    # Extracted JSON
-│   └── errors/                    # Error logs
 │
 └── .claude/                       # Claude Code ecosystem
     ├── agents/                    # 40 specialized AI agents
     ├── commands/                  # 12 slash commands
     ├── kb/                        # 8 knowledge base domains
     └── sdd/                       # Spec-Driven Development
-```
-
----
-
-## CLI Commands
-
-### `extract` - Single File
-
-```bash
-invoice-extract extract <file> [OPTIONS]
-
-Arguments:
-  file          Invoice file (TIFF, PNG, JPEG)
-
-Options:
-  --vendor      Vendor type (ubereats, doordash, grubhub, ifood, rappi, auto)
-  --output-dir  Output directory for JSON files
-  --processed-dir  Directory for processed images
-  --errors-dir  Directory for error logs
-```
-
-**Example:**
-
-```bash
-invoice-extract extract data/input/ubereats_invoice.tiff --vendor ubereats
-
-# Output:
-# ✓ Extraction successful!
-# Invoice ID: UE-2026-001234
-# Vendor: Restaurant ABC
-# Total: BRL 1,234.56
-# Confidence: 95.2%
-# Latency: 1,250ms
-# Provider: gemini
-```
-
-### `batch` - Directory
-
-```bash
-invoice-extract batch <directory> [OPTIONS]
-
-# Process all invoices in a directory
-invoice-extract batch examples/ --vendor auto
-```
-
-### `validate` - JSON File
-
-```bash
-invoice-extract validate <json_file>
-
-# Validate extraction result
-invoice-extract validate data/output/UE-2026-001234.json
 ```
 
 ---
@@ -282,25 +244,109 @@ pip install -e ".[dev]"
 # Run linter
 ruff check .
 
+# Run formatter check
+ruff format --check .
+
 # Run tests
-pytest -v
+pytest -v --tb=short
 
 # Run tests with coverage
 pytest --cov=src --cov-report=term-missing
 ```
+
+### Generate Synthetic Test Data
+
+```bash
+cd gen/synthetic_invoice_gen
+pip install -e .
+
+# Generate 10 test invoices
+invoice-gen generate --count 10 --output ../../examples/
+
+# Generate specific vendor
+invoice-gen generate --vendor ubereats --count 5
+```
+
+### Smoke Tests
+
+End-to-end smoke tests validate the complete pipeline:
+
+```bash
+# Run smoke tests against dev environment
+pytest tests/smoke/ -v
+
+# Run with specific vendor
+pytest tests/smoke/ -v --vendor ubereats
+
+# Skip Cloud Logging checks
+pytest tests/smoke/ -v --skip-logging
+```
+
+**Smoke Test Stages:**
+
+1. **Generate** - Create synthetic invoice
+2. **Upload** - Upload TIFF to GCS
+3. **Process** - Poll for extraction completion
+4. **Validate** - Compare extraction vs ground truth
+5. **BigQuery** - Verify row in BigQuery
+6. **Logging** - Check for pipeline errors
 
 ### Code Quality
 
 The project uses:
 
 - **Ruff** for linting (E, F, I, UP, B, SIM rules)
+- **mypy** for type checking
 - **pytest** for testing
 - **Pydantic v2** for data validation
 - **Type hints** on all function signatures
 
 ---
 
-## Configuration
+## CI/CD Pipeline
+
+### GitHub Actions Workflows
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| **CI Pipeline** | PR to main | Lint, type check, unit tests, Docker build, security scan |
+| **CD Dev** | Push to main | Deploy to dev environment |
+| **CD Prod** | Manual/tag | Deploy to production |
+| **Terraform** | infra/** changes | Plan and apply infrastructure |
+| **Claude Review** | PR | AI code review |
+
+### CI Pipeline Stages
+
+```text
+┌─────────┐   ┌────────────┐   ┌────────────┐   ┌──────────────┐   ┌───────────────┐
+│  Lint   │──▶│ Type Check │──▶│ Unit Tests │──▶│ Docker Build │──▶│ Security Scan │
+│ (Ruff)  │   │   (mypy)   │   │  (pytest)  │   │  (4 images)  │   │   (Trivy)     │
+└─────────┘   └────────────┘   └────────────┘   └──────────────┘   └───────────────┘
+```
+
+---
+
+## Infrastructure
+
+### Terraform Modules
+
+| Module | Purpose |
+|--------|---------|
+| `cloud-run` | Cloud Run function definitions |
+| `pubsub` | Pub/Sub topics and subscriptions |
+| `gcs` | GCS bucket configurations |
+| `bigquery` | BigQuery dataset and tables |
+| `iam` | Service accounts and permissions |
+| `secrets` | Secret Manager secrets |
+
+### GCS Buckets
+
+| Bucket | Purpose | Retention |
+|--------|---------|-----------|
+| `gs://invoices-input` | Raw TIFF landing zone | 30 days |
+| `gs://invoices-processed` | Converted PNG files | 90 days |
+| `gs://invoices-archive` | Compliance archive | 7 years |
+| `gs://invoices-failed` | Failed processing | Until resolved |
 
 ### Environment Variables
 
@@ -312,45 +358,6 @@ The project uses:
 | `LANGFUSE_PUBLIC_KEY` | No | LangFuse observability key |
 | `LANGFUSE_SECRET_KEY` | No | LangFuse secret key |
 
-### GCS Buckets (Production)
-
-| Bucket | Purpose | Retention |
-|--------|---------|-----------|
-| `gs://invoices-input` | Raw TIFF landing zone | 30 days |
-| `gs://invoices-processed` | Converted PNG files | 90 days |
-| `gs://invoices-archive` | Compliance archive | 7 years |
-| `gs://invoices-failed` | Failed processing | Until resolved |
-
----
-
-## Testing
-
-### Generate Synthetic Test Data
-
-```bash
-cd gen/synthetic_invoice_gen
-pip install -e .
-
-# Generate 10 test invoices
-invoice-gen generate --count 10 --output ../examples/
-
-# Generate specific vendor
-invoice-gen generate --vendor ubereats --count 5
-```
-
-### Run Extraction Tests
-
-```bash
-# Unit tests
-pytest src/invoice_extractor/tests/unit/
-
-# Integration tests (requires API keys)
-pytest src/invoice_extractor/tests/integration/
-
-# Full test suite
-pytest -v --tb=short
-```
-
 ---
 
 ## Documentation
@@ -361,6 +368,7 @@ pytest -v --tb=short
 | [Cloud Run Architecture](design/gcp-cloud-run-fncs.md) | Detailed Cloud Run function design |
 | [Invoice Extractor Design](design/invoice-extractor-design.md) | Extraction pipeline architecture |
 | [Deployment Requirements](design/gcp-deployment-requirements.md) | GCP deployment specifications |
+| [Terraform Design](design/infra-terraform-terragrunt-design.md) | Infrastructure as Code design |
 
 ---
 
@@ -385,6 +393,12 @@ pytest -v --tb=short
 4. Commit your changes (`git commit -m 'Add amazing feature'`)
 5. Push to the branch (`git push origin feature/amazing-feature`)
 6. Open a Pull Request
+
+### Code Review
+
+All PRs are reviewed by:
+- **CodeRabbit** - AI-powered static analysis
+- **Claude Code** - Architectural review
 
 ---
 

@@ -1,0 +1,228 @@
+# Smoke Tests - Invoice Processing Pipeline
+# End-to-end validation after deployment
+#
+# Runs after successful DEV deployment to verify pipeline health
+# Can also be triggered manually for any environment
+
+name: Smoke Tests
+
+on:
+  # Trigger after DEV deployment completes
+  workflow_run:
+    workflows: ["CD - Deploy to Dev"]
+    types: [completed]
+    branches: [main]
+
+  # Manual trigger for DEV only (PROD uses different validation)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+      vendor:
+        description: 'Vendor type for test invoice'
+        required: true
+        default: 'ubereats'
+        type: choice
+        options:
+          - ubereats
+          - doordash
+          - grubhub
+          - ifood
+          - rappi
+      verbose:
+        description: 'Enable verbose output'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+
+permissions:
+  contents: read
+  id-token: write  # Required for Workload Identity Federation
+
+jobs:
+  # ============================================
+  # Smoke Test Execution
+  # ============================================
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+
+    # Only run if deployment succeeded (for workflow_run trigger)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install click pydantic pyyaml google-cloud-storage google-cloud-bigquery google-cloud-logging
+          pip install -e gen/synthetic_invoice_gen
+
+      # ============================================
+      # GCP Authentication
+      # ============================================
+      - name: Authenticate to Google Cloud (Workload Identity)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        continue-on-error: true
+
+      - name: Authenticate to Google Cloud (SA Key Fallback)
+        if: steps.auth.outcome == 'failure'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ============================================
+      # Determine Environment
+      # ============================================
+      - name: Set environment variables
+        id: env
+        run: |
+          # Use input if manual trigger, otherwise default to dev
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "vendor=${{ inputs.vendor }}" >> $GITHUB_OUTPUT
+            echo "verbose=${{ inputs.verbose && '--verbose' || '' }}" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "vendor=ubereats" >> $GITHUB_OUTPUT
+            echo "verbose=--verbose" >> $GITHUB_OUTPUT
+          fi
+
+      # ============================================
+      # Run Smoke Tests
+      # ============================================
+      - name: Run smoke tests
+        id: smoke
+        run: |
+          echo "🔬 Running smoke tests..."
+          echo "Environment: ${{ steps.env.outputs.environment }}"
+          echo "Vendor: ${{ steps.env.outputs.vendor }}"
+          echo ""
+
+          python -m tests.smoke.cli \
+            --env ${{ steps.env.outputs.environment }} \
+            --vendor ${{ steps.env.outputs.vendor }} \
+            ${{ steps.env.outputs.verbose }} \
+            --json-output > smoke_results.json || true
+
+          # Parse results
+          if jq -e '.success' smoke_results.json | grep -q true; then
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "result=failure" >> $GITHUB_OUTPUT
+          fi
+
+          # Display results
+          echo ""
+          echo "📊 Results:"
+          cat smoke_results.json | jq '.'
+
+      # ============================================
+      # Generate Summary
+      # ============================================
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## 🔬 Smoke Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -f smoke_results.json ]]; then
+            SUCCESS=$(jq -r '.success' smoke_results.json)
+            PASSED=$(jq -r '.stages_passed' smoke_results.json)
+            FAILED=$(jq -r '.stages_failed' smoke_results.json)
+            SKIPPED=$(jq -r '.stages_skipped' smoke_results.json)
+            DURATION=$(jq -r '.total_duration_ms' smoke_results.json)
+            INVOICE_ID=$(jq -r '.invoice_id // "N/A"' smoke_results.json)
+
+            if [[ "$SUCCESS" == "true" ]]; then
+              echo "### ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ❌ Tests Failed" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Environment | \`${{ steps.env.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vendor | \`${{ steps.env.outputs.vendor }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Duration | ${DURATION}ms |" >> $GITHUB_STEP_SUMMARY
+            echo "| Invoice ID | \`$INVOICE_ID\` |" >> $GITHUB_STEP_SUMMARY
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Stage Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            jq '.stage_results' smoke_results.json >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+            # Add error summary if failed
+            if [[ "$SUCCESS" != "true" ]]; then
+              ERROR=$(jq -r '.error_summary // "Unknown error"' smoke_results.json)
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Error Summary" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "> $ERROR" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ No results file generated" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: smoke_results.json
+          retention-days: 30
+
+      - name: Fail if tests failed
+        if: steps.smoke.outputs.result == 'failure'
+        run: |
+          echo "❌ Smoke tests failed!"
+          exit 1
+
+  # ============================================
+  # Notify on Failure (Optional)
+  # ============================================
+  notify:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: smoke-test
+    if: failure()
+
+    steps:
+      - name: Send notification
+        run: |
+          echo "🚨 Smoke tests failed after deployment!"
+          echo "Check the workflow run for details."
+          # Add Slack notification here if needed:
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"🚨 Smoke tests failed after DEV deployment!"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
