@@ -23,7 +23,7 @@ from pydantic import ValidationError
 from shared.adapters import GCPBigQueryAdapter, GCSAdapter, PubSubAdapter
 from shared.schemas.invoice import ExtractedInvoice
 from shared.schemas.messages import InvoiceExtractedMessage
-from shared.utils import configure_logging, get_config
+from shared.utils import configure_logging, function_timer, get_config
 
 from .writer import write_extraction_metrics, write_invoice_to_bigquery
 
@@ -64,78 +64,135 @@ def handle_invoice_extracted(cloud_event: CloudEvent) -> None:
 
     source_file = "unknown"
     invoice_id = "unknown"
+    success = False
+    result = None
+    invoice = None
+    message = None
+    raw_message = {}
 
-    try:
-        message_data = base64.b64decode(cloud_event.data["message"]["data"])
-        raw_message = json.loads(message_data)
+    with function_timer() as timing:
+        try:
+            message_data = base64.b64decode(cloud_event.data["message"]["data"])
+            raw_message = json.loads(message_data)
 
-        message = InvoiceExtractedMessage.model_validate(raw_message)
-        source_file = message.source_file
+            message = InvoiceExtractedMessage.model_validate(raw_message)
+            source_file = message.source_file
 
-        logger.info(
-            "Processing extracted invoice",
-            extra={
-                "source_file": source_file,
-                "vendor_type": message.vendor_type.value,
-                "extraction_model": message.extraction_model,
-                "confidence_score": message.confidence_score,
-            },
-        )
-
-        invoice = ExtractedInvoice.model_validate(message.extracted_data)
-        invoice_id = invoice.invoice_id
-
-        logger.info(
-            "Invoice re-validated successfully",
-            extra={
-                "invoice_id": invoice_id,
-                "vendor_type": invoice.vendor_type.value,
-                "line_items_count": len(invoice.line_items),
-                "total_amount": str(invoice.total_amount),
-            },
-        )
-
-        result = write_invoice_to_bigquery(
-            invoice=invoice,
-            bq_adapter=bq_adapter,
-            dataset=config.dataset,
-            invoices_table=config.invoices_table,
-            line_items_table=config.line_items_table,
-            source_file=source_file,
-            extraction_model=message.extraction_model,
-            extraction_latency_ms=message.extraction_latency_ms,
-            confidence_score=message.confidence_score,
-        )
-
-        if not result.success:
-            logger.error(
-                "BigQuery write failed",
+            logger.info(
+                "Processing extracted invoice",
                 extra={
-                    "invoice_id": invoice_id,
-                    "error": result.error,
+                    "source_file": source_file,
+                    "vendor_type": message.vendor_type.value,
+                    "extraction_model": message.extraction_model,
+                    "confidence_score": message.confidence_score,
                 },
             )
-            raise RuntimeError(f"BigQuery write failed: {result.error}")
 
-        write_extraction_metrics(
-            bq_adapter=bq_adapter,
-            dataset=config.dataset,
-            metrics_table=config.metrics_table,
-            invoice_id=invoice_id,
-            vendor_type=message.vendor_type,
-            source_file=source_file,
-            extraction_model=message.extraction_model,
-            extraction_latency_ms=message.extraction_latency_ms,
-            confidence_score=message.confidence_score,
-            success=True,
-        )
+            invoice = ExtractedInvoice.model_validate(message.extracted_data)
+            invoice_id = invoice.invoice_id
 
-        if result.is_duplicate:
+            logger.info(
+                "Invoice re-validated successfully",
+                extra={
+                    "invoice_id": invoice_id,
+                    "vendor_type": invoice.vendor_type.value,
+                    "line_items_count": len(invoice.line_items),
+                    "total_amount": str(invoice.total_amount),
+                },
+            )
+
+            result = write_invoice_to_bigquery(
+                invoice=invoice,
+                bq_adapter=bq_adapter,
+                dataset=config.dataset,
+                invoices_table=config.invoices_table,
+                line_items_table=config.line_items_table,
+                source_file=source_file,
+                extraction_model=message.extraction_model,
+                extraction_latency_ms=message.extraction_latency_ms,
+                confidence_score=message.confidence_score,
+            )
+
+            if not result.success:
+                logger.error(
+                    "BigQuery write failed",
+                    extra={
+                        "invoice_id": invoice_id,
+                        "error": result.error,
+                    },
+                )
+                raise RuntimeError(f"BigQuery write failed: {result.error}")
+
+            write_extraction_metrics(
+                bq_adapter=bq_adapter,
+                dataset=config.dataset,
+                metrics_table=config.metrics_table,
+                invoice_id=invoice_id,
+                vendor_type=message.vendor_type,
+                source_file=source_file,
+                extraction_model=message.extraction_model,
+                extraction_latency_ms=message.extraction_latency_ms,
+                confidence_score=message.confidence_score,
+                success=True,
+            )
+
+            success = True
+
+        except Exception as e:
+            logger.exception(
+                "BigQuery write processing failed",
+                extra={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "source_file": source_file,
+                    "invoice_id": invoice_id,
+                },
+            )
+
+            try:
+                write_extraction_metrics(
+                    bq_adapter=bq_adapter,
+                    dataset=config.dataset,
+                    metrics_table=config.metrics_table,
+                    invoice_id=invoice_id,
+                    vendor_type=message.vendor_type if message else "other",
+                    source_file=source_file,
+                    extraction_model=message.extraction_model if message else "unknown",
+                    extraction_latency_ms=message.extraction_latency_ms if message else 0,
+                    confidence_score=0.0,
+                    success=False,
+                    error_message=str(e),
+                )
+            except Exception:
+                pass
+
+            try:
+                _write_failure_to_bucket(
+                    config=config,
+                    source_file=source_file,
+                    invoice_id=invoice_id,
+                    error=e,
+                    raw_message=raw_message,
+                    message=message,
+                )
+            except Exception as write_error:
+                logger.error(
+                    "Failed to write error file to bucket",
+                    extra={
+                        "original_error": str(e),
+                        "write_error": str(write_error),
+                        "source_file": source_file,
+                    },
+                )
+
+    if success:
+        if result and result.is_duplicate:
             logger.info(
                 "Duplicate invoice - no action taken",
                 extra={
                     "invoice_id": invoice_id,
                     "source_file": source_file,
+                    "latency_ms": timing["latency_ms"],
                 },
             )
         else:
@@ -143,69 +200,23 @@ def handle_invoice_extracted(cloud_event: CloudEvent) -> None:
                 "Invoice persisted to BigQuery",
                 extra={
                     "invoice_id": invoice_id,
-                    "vendor_type": invoice.vendor_type.value,
-                    "rows_written": result.rows_written,
+                    "vendor_type": invoice.vendor_type.value if invoice else "unknown",
+                    "rows_written": result.rows_written if result else 0,
                     "dataset": config.dataset,
                     "table": config.invoices_table,
+                    "latency_ms": timing["latency_ms"],
                 },
             )
-
-    except Exception as e:
-        logger.exception(
-            "BigQuery write processing failed",
+    else:
+        logger.info(
+            "Failed invoice written to failed bucket - message acknowledged",
             extra={
-                "error": str(e),
-                "error_type": type(e).__name__,
                 "source_file": source_file,
                 "invoice_id": invoice_id,
+                "failed_bucket": config.failed_bucket,
+                "latency_ms": timing["latency_ms"],
             },
         )
-
-        try:
-            write_extraction_metrics(
-                bq_adapter=bq_adapter,
-                dataset=config.dataset,
-                metrics_table=config.metrics_table,
-                invoice_id=invoice_id,
-                vendor_type=message.vendor_type if "message" in dir() else "other",
-                source_file=source_file,
-                extraction_model=message.extraction_model if "message" in dir() else "unknown",
-                extraction_latency_ms=message.extraction_latency_ms if "message" in dir() else 0,
-                confidence_score=0.0,
-                success=False,
-                error_message=str(e),
-            )
-        except Exception:
-            pass
-
-        # Write structured error to failed bucket for agentic processing
-        try:
-            _write_failure_to_bucket(
-                config=config,
-                source_file=source_file,
-                invoice_id=invoice_id,
-                error=e,
-                raw_message=raw_message if "raw_message" in dir() else {},
-                message=message if "message" in dir() else None,
-            )
-            logger.info(
-                "Failed invoice written to failed bucket - message acknowledged",
-                extra={
-                    "source_file": source_file,
-                    "invoice_id": invoice_id,
-                    "failed_bucket": config.failed_bucket,
-                },
-            )
-        except Exception as write_error:
-            logger.error(
-                "Failed to write error file to bucket",
-                extra={
-                    "original_error": str(e),
-                    "write_error": str(write_error),
-                    "source_file": source_file,
-                },
-            )
-        # Do NOT re-raise - acknowledge the message to prevent infinite retries
 
 
 def _write_failure_to_bucket(
@@ -275,7 +286,6 @@ def _create_error_record(
     Returns:
         Structured error record ready for JSON serialization
     """
-    # Extract validation error details if available
     validation_details = None
     if isinstance(error, ValidationError):
         validation_details = {

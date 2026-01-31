@@ -26,7 +26,7 @@ from shared.adapters import (
 )
 from shared.adapters.llm import OpenRouterAdapter
 from shared.schemas.messages import InvoiceClassifiedMessage, InvoiceExtractedMessage
-from shared.utils import configure_logging, get_config, parse_gcs_uri
+from shared.utils import configure_logging, function_timer, get_config, parse_gcs_uri
 
 from .extractor import (
     calculate_extraction_scores,
@@ -64,7 +64,6 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
     storage = GCSAdapter(project_id=config.project_id)
     messaging = PubSubAdapter(project_id=config.project_id)
 
-    # Create LangFuse observer for LLM tracing (auto-enables if keys present)
     observer = create_observer(enabled=config.langfuse_enabled)
 
     gemini = GeminiAdapter(
@@ -82,140 +81,161 @@ def handle_invoice_classified(cloud_event: CloudEvent) -> None:
         )
 
     source_file = "unknown"
+    total_input_bytes = 0
+    exception_to_raise: Exception | None = None
+    result = None
+    trace_context = None
+    message = None
 
-    try:
-        message_data = base64.b64decode(cloud_event.data["message"]["data"])
-        raw_message = json.loads(message_data)
+    with function_timer() as timing:
+        try:
+            message_data = base64.b64decode(cloud_event.data["message"]["data"])
+            raw_message = json.loads(message_data)
 
-        message = InvoiceClassifiedMessage.model_validate(raw_message)
-        source_file = message.source_file
+            message = InvoiceClassifiedMessage.model_validate(raw_message)
+            source_file = message.source_file
 
-        # Extract trace context from incoming message for distributed tracing
-        trace_context = TraceContext.from_message(message)
+            trace_context = TraceContext.from_message(message)
 
-        logger.info(
-            "Processing classified invoice",
-            extra={
-                "source_file": source_file,
-                "vendor_type": message.vendor_type.value,
-                "quality_score": message.quality_score,
-                "page_count": len(message.converted_files),
-                "trace_id": trace_context.trace_id,
-                "session_id": trace_context.session_id,
-            },
-        )
-
-        images_data = []
-        for png_uri in message.converted_files:
-            bucket, path = parse_gcs_uri(png_uri)
-            png_data = storage.read(bucket, path)
-            images_data.append(png_data)
-
-        # Pass observer for LangFuse prompt management and tracing
-        result = extract_invoice(
-            images_data=images_data,
-            vendor_type=message.vendor_type,
-            llm_adapter=gemini,
-            fallback_adapter=openrouter,
-            observer=observer,
-        )
-
-        if not result.success:
-            logger.error(
-                "Extraction failed - moving to failed bucket",
+            logger.info(
+                "Processing classified invoice",
                 extra={
                     "source_file": source_file,
-                    "error": result.error,
-                    "provider": result.provider,
-                    "latency_ms": result.latency_ms,
-                },
-            )
-
-            _copy_to_failed_bucket(storage, config, source_file, result.error or "Unknown error")
-            observer.flush()  # Flush traces before returning
-            return
-
-        logger.info(
-            "Extraction successful",
-            extra={
-                "source_file": source_file,
-                "vendor_type": message.vendor_type.value,
-                "provider": result.provider,
-                "latency_ms": result.latency_ms,
-                "confidence": result.confidence,
-                "invoice_id": result.invoice.invoice_id if result.invoice else None,
-                "prompt_name": result.prompt_name,
-                "prompt_version": result.prompt_version,
-                "trace_id": trace_context.trace_id,
-            },
-        )
-
-        # Add LangFuse scores for extraction quality tracking
-        if result.invoice and observer.is_enabled:
-            extraction_scores = calculate_extraction_scores(result.invoice)
-            extraction_scores["extraction_confidence"] = result.confidence
-            score_comments = get_score_comments(result.invoice, extraction_scores)
-            score_comments["extraction_confidence"] = f"Provider: {result.provider}, latency: {result.latency_ms}ms"
-
-            observer.score_trace(
-                trace_id=trace_context.trace_id,
-                scores=extraction_scores,
-                comments=score_comments,
-            )
-
-            logger.debug(
-                "Added LangFuse scores",
-                extra={
+                    "vendor_type": message.vendor_type.value,
+                    "quality_score": message.quality_score,
+                    "page_count": len(message.converted_files),
                     "trace_id": trace_context.trace_id,
-                    "scores": extraction_scores,
+                    "session_id": trace_context.session_id,
                 },
             )
 
-        # Build extracted message with trace context propagation
-        extracted_message = InvoiceExtractedMessage(
-            # Trace context - propagate to next function
-            trace_id=trace_context.trace_id,
-            session_id=trace_context.session_id,
-            parent_span_id=trace_context.parent_span_id,  # This span becomes parent for next
-            # Extraction results
-            source_file=source_file,
-            vendor_type=message.vendor_type,
-            extraction_model="gemini-2.5-flash" if result.provider == "gemini" else "openrouter",
-            extraction_latency_ms=result.latency_ms,
-            confidence_score=result.confidence,
-            extracted_data=result.invoice.model_dump(mode="json") if result.invoice else {},
-            # Prompt tracking
-            prompt_name=result.prompt_name,
-            prompt_version=result.prompt_version,
-        )
+            images_data = []
+            total_input_bytes = 0
+            for png_uri in message.converted_files:
+                bucket, path = parse_gcs_uri(png_uri)
+                png_data = storage.read(bucket, path)
+                images_data.append(png_data)
+                total_input_bytes += len(png_data)
 
-        messaging.publish(
-            config.extracted_topic,
-            extracted_message.model_dump(mode="json"),
-        )
+            logger.info(
+                "Downloaded all images",
+                extra={
+                    "source_file": source_file,
+                    "file_count": len(images_data),
+                    "total_input_bytes": total_input_bytes,
+                },
+            )
 
-        logger.info(
-            "Extraction complete - published event",
-            extra={
-                "source_file": source_file,
-                "invoice_id": result.invoice.invoice_id if result.invoice else None,
-                "topic": config.extracted_topic,
-            },
-        )
+            result = extract_invoice(
+                images_data=images_data,
+                vendor_type=message.vendor_type,
+                llm_adapter=gemini,
+                fallback_adapter=openrouter,
+                observer=observer,
+            )
 
-        observer.flush()  # Flush traces before completing
+            if not result.success:
+                logger.error(
+                    "Extraction failed - moving to failed bucket",
+                    extra={
+                        "source_file": source_file,
+                        "error": result.error,
+                        "provider": result.provider,
+                        "llm_latency_ms": result.latency_ms,
+                    },
+                )
 
-    except Exception as e:
+                _copy_to_failed_bucket(storage, config, source_file, result.error or "Unknown error")
+                observer.flush()
+                return
+
+            logger.info(
+                "Extraction successful",
+                extra={
+                    "source_file": source_file,
+                    "vendor_type": message.vendor_type.value,
+                    "provider": result.provider,
+                    "llm_latency_ms": result.latency_ms,
+                    "confidence": result.confidence,
+                    "invoice_id": result.invoice.invoice_id if result.invoice else None,
+                    "prompt_name": result.prompt_name,
+                    "prompt_version": result.prompt_version,
+                    "trace_id": trace_context.trace_id,
+                },
+            )
+
+            if result.invoice and observer.is_enabled:
+                extraction_scores = calculate_extraction_scores(result.invoice)
+                extraction_scores["extraction_confidence"] = result.confidence
+                score_comments = get_score_comments(result.invoice, extraction_scores)
+                score_comments["extraction_confidence"] = (
+                    f"Provider: {result.provider}, latency: {result.latency_ms}ms"
+                )
+
+                observer.score_trace(
+                    trace_id=trace_context.trace_id,
+                    scores=extraction_scores,
+                    comments=score_comments,
+                )
+
+                logger.debug(
+                    "Added LangFuse scores",
+                    extra={
+                        "trace_id": trace_context.trace_id,
+                        "scores": extraction_scores,
+                    },
+                )
+
+            extracted_message = InvoiceExtractedMessage(
+                trace_id=trace_context.trace_id,
+                session_id=trace_context.session_id,
+                parent_span_id=trace_context.parent_span_id,
+                source_file=source_file,
+                vendor_type=message.vendor_type,
+                extraction_model="gemini-2.5-flash" if result.provider == "gemini" else "openrouter",
+                extraction_latency_ms=result.latency_ms,
+                confidence_score=result.confidence,
+                extracted_data=result.invoice.model_dump(mode="json") if result.invoice else {},
+                prompt_name=result.prompt_name,
+                prompt_version=result.prompt_version,
+            )
+
+            messaging.publish(
+                config.extracted_topic,
+                extracted_message.model_dump(mode="json"),
+            )
+
+            observer.flush()
+
+        except Exception as e:
+            exception_to_raise = e
+            observer.flush()
+
+    if exception_to_raise:
         logger.exception(
             "Extraction processing failed",
             extra={
-                "error": str(e),
-                "error_type": type(e).__name__,
+                "error": str(exception_to_raise),
+                "error_type": type(exception_to_raise).__name__,
                 "source_file": source_file,
+                "latency_ms": timing["latency_ms"],
+                "total_input_bytes": total_input_bytes,
             },
+            exc_info=exception_to_raise,
         )
-        observer.flush()  # Flush traces before re-raising
-        raise
+        raise exception_to_raise
+
+    logger.info(
+        "Extraction complete - published event",
+        extra={
+            "source_file": source_file,
+            "invoice_id": result.invoice.invoice_id if result and result.invoice else None,
+            "topic": config.extracted_topic,
+            "latency_ms": timing["latency_ms"],
+            "llm_latency_ms": result.latency_ms if result else 0,
+            "total_input_bytes": total_input_bytes,
+        },
+    )
 
 
 def _copy_to_failed_bucket(
@@ -237,14 +257,13 @@ def _copy_to_failed_bucket(
     try:
         source_bucket, source_path = parse_gcs_uri(source_file)
 
-        # Flatten to root - extract just the filename
         filename = source_path.split("/")[-1]
 
         storage.copy(
             source_bucket,
             source_path,
             config.failed_bucket,
-            filename,  # Flattened to root
+            filename,
         )
 
         error_path = f"{filename}.error.json"

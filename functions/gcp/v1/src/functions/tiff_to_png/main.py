@@ -14,7 +14,7 @@ from cloudevents.http import CloudEvent
 
 from shared.adapters import GCSAdapter, PubSubAdapter
 from shared.schemas.messages import InvoiceConvertedMessage, InvoiceUploadedMessage
-from shared.utils import configure_logging, get_config
+from shared.utils import configure_logging, function_timer, get_config
 
 from .converter import convert_tiff_to_png_detailed
 
@@ -45,105 +45,121 @@ def handle_invoice_uploaded(cloud_event: CloudEvent) -> None:
     messaging = PubSubAdapter(project_id=config.project_id)
 
     file_path = "unknown"
+    input_size_bytes = 0
+    total_output_bytes = 0
+    exception_to_raise: Exception | None = None
 
-    try:
-        message_data = base64.b64decode(cloud_event.data["message"]["data"])
-        raw_message = json.loads(message_data)
+    with function_timer() as timing:
+        try:
+            message_data = base64.b64decode(cloud_event.data["message"]["data"])
+            raw_message = json.loads(message_data)
 
-        message = InvoiceUploadedMessage.model_validate(raw_message)
-        file_path = message.name
+            message = InvoiceUploadedMessage.model_validate(raw_message)
+            file_path = message.name
 
-        logger.info(
-            "Processing invoice upload",
-            extra={
-                "bucket": message.bucket,
-                "file_path": file_path,
-                "event_time": message.event_time.isoformat(),
-            },
-        )
-
-        if not _is_tiff_file(file_path):
-            logger.warning(
-                "Skipping non-TIFF file",
-                extra={"file_path": file_path},
-            )
-            return
-
-        tiff_data = storage.read(message.bucket, file_path)
-
-        logger.info(
-            "Downloaded TIFF file",
-            extra={
-                "file_path": file_path,
-                "size_bytes": len(tiff_data),
-            },
-        )
-
-        result = convert_tiff_to_png_detailed(tiff_data)
-
-        logger.info(
-            "Converted TIFF to PNG",
-            extra={
-                "file_path": file_path,
-                "page_count": result.page_count,
-                "original_size_bytes": result.original_size_bytes,
-                "total_output_bytes": result.total_output_bytes,
-            },
-        )
-
-        converted_uris: list[str] = []
-        base_name = file_path.rsplit(".", 1)[0]
-
-        for i, png_data in enumerate(result.pages):
-            png_path = f"{base_name}_page{i + 1}.png"
-            uri = storage.write(
-                config.processed_bucket,
-                png_path,
-                png_data,
-                "image/png",
-            )
-            converted_uris.append(uri)
-
-            logger.debug(
-                "Uploaded PNG page",
+            logger.info(
+                "Processing invoice upload",
                 extra={
-                    "page": i + 1,
-                    "uri": uri,
-                    "size_bytes": len(png_data),
+                    "bucket": message.bucket,
+                    "file_path": file_path,
+                    "event_time": message.event_time.isoformat(),
                 },
             )
 
-        converted_message = InvoiceConvertedMessage(
-            source_file=f"gs://{message.bucket}/{file_path}",
-            converted_files=converted_uris,
-            page_count=result.page_count,
-        )
+            if not _is_tiff_file(file_path):
+                logger.warning(
+                    "Skipping non-TIFF file",
+                    extra={"file_path": file_path},
+                )
+                return
 
-        messaging.publish(
-            config.converted_topic,
-            converted_message.model_dump(mode="json"),
-        )
+            tiff_data = storage.read(message.bucket, file_path)
+            input_size_bytes = len(tiff_data)
 
-        logger.info(
-            "Conversion complete - published event",
-            extra={
-                "source_file": file_path,
-                "page_count": result.page_count,
-                "converted_files": converted_uris,
-                "topic": config.converted_topic,
-            },
-        )
+            logger.info(
+                "Downloaded TIFF file",
+                extra={
+                    "file_path": file_path,
+                    "input_size_bytes": input_size_bytes,
+                },
+            )
 
-    except Exception as e:
+            result = convert_tiff_to_png_detailed(tiff_data)
+
+            logger.info(
+                "Converted TIFF to PNG",
+                extra={
+                    "file_path": file_path,
+                    "page_count": result.page_count,
+                    "input_size_bytes": result.original_size_bytes,
+                    "total_output_bytes": result.total_output_bytes,
+                },
+            )
+
+            converted_uris: list[str] = []
+            base_name = file_path.rsplit(".", 1)[0]
+            total_output_bytes = 0
+
+            for i, png_data in enumerate(result.pages):
+                png_path = f"{base_name}_page{i + 1}.png"
+                uri = storage.write(
+                    config.processed_bucket,
+                    png_path,
+                    png_data,
+                    "image/png",
+                )
+                converted_uris.append(uri)
+                total_output_bytes += len(png_data)
+
+                logger.debug(
+                    "Uploaded PNG page",
+                    extra={
+                        "page": i + 1,
+                        "uri": uri,
+                        "output_size_bytes": len(png_data),
+                    },
+                )
+
+            converted_message = InvoiceConvertedMessage(
+                source_file=f"gs://{message.bucket}/{file_path}",
+                converted_files=converted_uris,
+                page_count=result.page_count,
+            )
+
+            messaging.publish(
+                config.converted_topic,
+                converted_message.model_dump(mode="json"),
+            )
+
+        except Exception as e:
+            exception_to_raise = e
+
+    if exception_to_raise:
         logger.exception(
             "Conversion failed",
             extra={
-                "error": str(e),
-                "error_type": type(e).__name__,
+                "error": str(exception_to_raise),
+                "error_type": type(exception_to_raise).__name__,
                 "file_path": file_path,
+                "latency_ms": timing["latency_ms"],
+                "input_size_bytes": input_size_bytes,
             },
+            exc_info=exception_to_raise,
         )
-        raise
+        raise exception_to_raise
+
+    logger.info(
+        "Conversion complete - published event",
+        extra={
+            "source_file": file_path,
+            "page_count": result.page_count,
+            "converted_files": converted_uris,
+            "topic": config.converted_topic,
+            "latency_ms": timing["latency_ms"],
+            "input_size_bytes": input_size_bytes,
+            "total_output_bytes": total_output_bytes,
+        },
+    )
 
 
 def _is_tiff_file(file_path: str) -> bool:
