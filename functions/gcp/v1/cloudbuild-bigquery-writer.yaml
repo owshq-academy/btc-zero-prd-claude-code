@@ -1,0 +1,63 @@
+# Cloud Build configuration for BigQuery Writer
+# Builds and deploys the bigquery-writer Cloud Run function
+#
+# Usage (from this directory):
+#   gcloud builds submit --config cloudbuild-bigquery-writer.yaml .
+#
+# Required substitutions:
+#   _REGION: GCP region (default: us-central1)
+
+substitutions:
+  _REGION: us-central1
+  _BQ_DATASET: invoices
+
+steps:
+  # Build bigquery-writer
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-bigquery-writer'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/bigquery-writer:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/bigquery-writer:latest'
+      - '-f'
+      - 'deploy/bigquery_writer.Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-bigquery-writer'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/bigquery-writer:$COMMIT_SHA'
+    waitFor: ['build-bigquery-writer']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-bigquery-writer-latest'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/bigquery-writer:latest'
+    waitFor: ['build-bigquery-writer']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-bigquery-writer'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'bigquery-writer'
+      - '--image=gcr.io/$PROJECT_ID/bigquery-writer:$COMMIT_SHA'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--memory=512Mi'
+      - '--timeout=120'
+      - '--no-allow-unauthenticated'
+      - '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_REGION=$_REGION,BQ_DATASET=$_BQ_DATASET,FAILED_BUCKET=$PROJECT_ID-invoices-failed'
+    waitFor: ['push-bigquery-writer']
+
+images:
+  - 'gcr.io/$PROJECT_ID/bigquery-writer:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/bigquery-writer:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

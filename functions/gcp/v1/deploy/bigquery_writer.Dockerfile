@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir \
     functions-framework>=3.0.0 \
     google-cloud-bigquery>=3.13.0 \
     google-cloud-pubsub>=2.18.0 \
+    google-cloud-storage>=2.14.0 \
     pydantic>=2.0.0 \
     cloudevents>=1.10.0
 
