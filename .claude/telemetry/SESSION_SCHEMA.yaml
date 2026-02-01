@@ -1,0 +1,166 @@
+# AgentSpec Telemetry Session Schema
+# Version: 1.0
+#
+# This schema defines the structure of session JSON files
+# captured when running /ship --telemetry
+
+version: "1.0"
+
+session:
+  feature:
+    type: string
+    description: "Feature name (SCREAMING_SNAKE_CASE)"
+    example: "INVOICE_PIPELINE"
+
+  shipped_at:
+    type: string
+    format: "ISO-8601"
+    description: "Timestamp when feature was shipped"
+    example: "2026-01-30T18:45:00Z"
+
+  phases:
+    brainstorm:
+      optional: true
+      fields:
+        started_at: "ISO-8601 timestamp"
+        completed_at: "ISO-8601 timestamp"
+        duration_minutes: "integer"
+        questions_asked: "integer (count)"
+        approaches_explored: "integer (count)"
+        features_removed_yagni: "integer (count)"
+
+    define:
+      required: true
+      fields:
+        started_at: "ISO-8601 timestamp"
+        completed_at: "ISO-8601 timestamp"
+        duration_minutes: "integer"
+        clarity_score: "integer (0-15)"
+        technical_context:
+          location: "string (src/, functions/, etc.)"
+          kb_domains: "array of strings"
+          iac_impact: "string (none, modify_existing, new_resources)"
+
+    design:
+      required: true
+      fields:
+        started_at: "ISO-8601 timestamp"
+        completed_at: "ISO-8601 timestamp"
+        duration_minutes: "integer"
+        file_count: "integer"
+        agents_matched: "integer"
+        decisions_count: "integer"
+
+    build:
+      required: true
+      fields:
+        started_at: "ISO-8601 timestamp"
+        completed_at: "ISO-8601 timestamp"
+        duration_minutes: "integer"
+        iterations: "integer"
+        tests_count: "integer"
+        tests_passed: "integer"
+
+    ship:
+      required: true
+      fields:
+        completed_at: "ISO-8601 timestamp"
+
+  agents:
+    type: array
+    items:
+      name: "string (agent name without @)"
+      files_assigned: "integer"
+      success: "boolean"
+      quality_score: "float or null (from Judge if enabled)"
+
+  judge:
+    enabled: "boolean"
+    pre_design_score: "float or null"
+    post_build_score: "float or null"
+    reviewers: "array of strings (LLM providers used)"
+
+  metrics:
+    total_duration_minutes: "integer"
+    total_files: "integer"
+    total_loc_estimate: "integer (approximate)"
+    total_tests: "integer"
+    shipped: "boolean"
+
+# Example session file
+example:
+  feature: "INVOICE_PIPELINE"
+  shipped_at: "2026-01-30T18:45:00Z"
+
+  phases:
+    brainstorm:
+      started_at: "2026-01-29T10:00:00Z"
+      completed_at: "2026-01-29T11:30:00Z"
+      duration_minutes: 90
+      questions_asked: 5
+      approaches_explored: 3
+      features_removed_yagni: 3
+
+    define:
+      started_at: "2026-01-29T11:30:00Z"
+      completed_at: "2026-01-29T12:15:00Z"
+      duration_minutes: 45
+      clarity_score: 15
+      technical_context:
+        location: "functions/"
+        kb_domains: ["pydantic", "gcp", "gemini"]
+        iac_impact: "new_resources"
+
+    design:
+      started_at: "2026-01-29T13:00:00Z"
+      completed_at: "2026-01-29T15:00:00Z"
+      duration_minutes: 120
+      file_count: 45
+      agents_matched: 5
+      decisions_count: 5
+
+    build:
+      started_at: "2026-01-29T15:00:00Z"
+      completed_at: "2026-01-30T18:00:00Z"
+      duration_minutes: 180
+      iterations: 1
+      tests_count: 69
+      tests_passed: 69
+
+    ship:
+      completed_at: "2026-01-30T18:45:00Z"
+
+  agents:
+    - name: "python-developer"
+      files_assigned: 15
+      success: true
+      quality_score: null
+    - name: "function-developer"
+      files_assigned: 12
+      success: true
+      quality_score: null
+    - name: "extraction-specialist"
+      files_assigned: 8
+      success: true
+      quality_score: null
+    - name: "llm-specialist"
+      files_assigned: 6
+      success: true
+      quality_score: null
+    - name: "test-generator"
+      files_assigned: 4
+      success: true
+      quality_score: null
+
+  judge:
+    enabled: false
+    pre_design_score: null
+    post_build_score: null
+    reviewers: []
+
+  metrics:
+    total_duration_minutes: 435
+    total_files: 45
+    total_loc_estimate: 2500
+    total_tests: 69
+    shipped: true
