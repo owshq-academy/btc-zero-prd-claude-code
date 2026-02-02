@@ -7,6 +7,7 @@
 [![GCP](https://img.shields.io/badge/cloud-GCP-4285F4.svg)](https://cloud.google.com/)
 [![Terraform](https://img.shields.io/badge/IaC-Terraform-623CE4.svg)](https://www.terraform.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-218%20functions-brightgreen.svg)](#testing)
 
 ---
 
@@ -71,7 +72,7 @@ OBSERVABILITY                              AUTONOMOUS OPS
 | **Data Warehouse** | BigQuery | Extracted invoice data |
 | **LLM** | Gemini 2.0 Flash | Document extraction |
 | **LLM Fallback** | OpenRouter (Claude 3.5/GPT-4o) | Backup provider |
-| **LLMOps** | LangFuse | LLM observability |
+| **LLMOps** | LangFuse | Distributed tracing, cost tracking, prompt management |
 | **Validation** | Pydantic v2 | Structured output validation |
 | **IaC** | Terraform + Terragrunt | Infrastructure provisioning |
 | **CI/CD** | GitHub Actions | Automated testing and deployment |
@@ -191,6 +192,105 @@ Three AI agents for self-monitoring:
 | **Triage** | Monitor logs, classify severity | Filtered events |
 | **Root Cause** | Analyze patterns, find issues | Analysis report |
 | **Reporter** | Format reports, notify team | Slack alerts |
+
+---
+
+## Observability & Metrics
+
+### LangFuse Integration
+
+The pipeline includes comprehensive LLM observability via LangFuse:
+
+| Feature | Description |
+|---------|-------------|
+| **Distributed Tracing** | W3C trace context propagation across all 5 functions |
+| **Session Grouping** | Related invoices grouped by session ID |
+| **Cost Tracking** | Token usage and cost per extraction via `usage_details` |
+| **Prompt Management** | Versioned prompts with production/staging labels |
+| **Confidence Scoring** | Per-extraction confidence scores (0.0-1.0) |
+| **Silent Fallback** | Observability errors never block invoice processing |
+
+### Pipeline Metrics
+
+Each function emits structured logs with key metrics:
+
+```json
+{
+  "source_file": "gs://invoices-input/invoice.tiff",
+  "latency_ms": 2345,
+  "llm_latency_ms": 1890,
+  "total_input_bytes": 524288,
+  "confidence": 0.95,
+  "provider": "gemini",
+  "trace_id": "abc123..."
+}
+```
+
+| Metric | Description |
+|--------|-------------|
+| `latency_ms` | Total function execution time |
+| `llm_latency_ms` | LLM API call time only |
+| `total_input_bytes` | Total size of input images |
+| `confidence` | Extraction confidence score |
+| `trace_id` | Distributed trace identifier |
+
+### Extraction Scores
+
+The pipeline tracks multiple quality scores per extraction:
+
+| Score | Description |
+|-------|-------------|
+| `extraction_confidence` | Overall extraction confidence (0.0-1.0) |
+| `field_completeness` | Percentage of optional fields populated |
+| `validation_success` | Boolean: passed Pydantic validation |
+
+---
+
+## CLI Reference
+
+### `invoice-extract extract`
+
+Extract data from a single invoice file.
+
+```bash
+invoice-extract extract <INPUT_FILE> [OPTIONS]
+
+# Options:
+  --output-dir PATH       Output directory for JSON [default: data/output]
+  --processed-dir PATH    Directory for processed images [default: data/processed]
+  --errors-dir PATH       Directory for error logs [default: data/errors]
+  --vendor TEXT           Vendor type: ubereats/doordash/grubhub/ifood/rappi/auto
+  --gemini-project TEXT   GCP project ID (or GOOGLE_CLOUD_PROJECT env var)
+  --openrouter-key TEXT   OpenRouter API key (required, or OPENROUTER_API_KEY env var)
+
+# Examples:
+invoice-extract extract invoice.tiff
+invoice-extract extract invoice.tiff --vendor ubereats --output-dir results/
+invoice-extract extract invoice.tiff --gemini-project my-project
+```
+
+### `invoice-extract batch`
+
+Process all invoices in a directory.
+
+```bash
+invoice-extract batch <INPUT_DIR> [OPTIONS]
+
+# Examples:
+invoice-extract batch data/input/
+invoice-extract batch invoices/ --vendor doordash --output-dir results/
+```
+
+### `invoice-extract validate`
+
+Validate a JSON extraction result against schema and business rules.
+
+```bash
+invoice-extract validate <JSON_FILE>
+
+# Examples:
+invoice-extract validate data/output/UE-2026-001234.json
+```
 
 ---
 
@@ -357,6 +457,29 @@ pytest tests/smoke/ -v --skip-logging
 5. **BigQuery** - Verify row in BigQuery
 6. **Logging** - Check for pipeline errors
 
+### Testing
+
+The project includes **218 test functions** across multiple test suites:
+
+| Suite | Location | Purpose |
+|-------|----------|---------|
+| Unit Tests | `src/invoice_extractor/tests/` | Invoice extractor logic |
+| Function Tests | `functions/gcp/v1/tests/unit/` | Cloud Run function logic |
+| Integration Tests | `functions/gcp/v1/tests/integration/` | Cross-function workflows |
+| Generator Tests | `gen/synthetic_invoice_gen/tests/` | Invoice generator |
+| Smoke Tests | `tests/smoke/` | End-to-end pipeline |
+
+```bash
+# Run all tests
+pytest -v
+
+# Run specific test suite
+pytest functions/gcp/v1/tests/unit/ -v
+
+# Run with coverage report
+pytest --cov=src --cov=functions/gcp/v1/src --cov-report=html
+```
+
 ### Pre-commit Hooks
 
 The project uses pre-commit hooks for quality enforcement:
@@ -445,6 +568,62 @@ All PRs are reviewed by:
 | `GCP_REGION` | No | GCP region (default: us-central1) |
 | `LANGFUSE_PUBLIC_KEY` | No | LangFuse observability key |
 | `LANGFUSE_SECRET_KEY` | No | LangFuse secret key |
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### LLM Extraction Fails
+
+```bash
+# Check OpenRouter API key is set
+echo $OPENROUTER_API_KEY
+
+# Test with verbose logging
+invoice-extract extract invoice.tiff 2>&1 | grep -i error
+```
+
+#### Cloud Run Function Timeout
+
+```bash
+# Check function logs
+gcloud functions logs read data-extractor --limit 50
+
+# Increase timeout (max 540s for 2nd gen)
+gcloud functions deploy data-extractor --timeout=540s
+```
+
+#### LangFuse Not Recording Traces
+
+```bash
+# Verify credentials
+echo $LANGFUSE_PUBLIC_KEY
+echo $LANGFUSE_SECRET_KEY
+
+# Check auth
+python -c "from langfuse import Langfuse; print(Langfuse().auth_check())"
+```
+
+#### Pydantic Validation Errors
+
+```bash
+# Validate extracted JSON
+invoice-extract validate data/output/invoice.json
+
+# Check schema compatibility
+python -c "from shared.schemas.invoice import ExtractedInvoice; print(ExtractedInvoice.model_json_schema())"
+```
+
+### Debug Mode
+
+Enable verbose logging:
+
+```bash
+export LOG_LEVEL=DEBUG
+invoice-extract extract invoice.tiff
+```
 
 ---
 

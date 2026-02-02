@@ -209,6 +209,15 @@ btc-zero-prd-claude-code/
 | Observability | `shared/adapters/observability.py` | LangFuse integration |
 | Invoice Schema | `shared/schemas/invoice.py` | Pydantic extraction models |
 | Message Schema | `shared/schemas/messages.py` | Pub/Sub message models |
+| Timing Utilities | `shared/utils/timing.py` | Latency and file size tracking |
+
+---
+
+## Active Features (In Progress)
+
+| Feature | Status | Description |
+| ------- | ------ | ----------- |
+| PIPELINE_OBSERVABILITY_METRICS | Ready for Design | Latency timing (ms) and file size metrics for all pipeline functions |
 
 ---
 
@@ -318,7 +327,7 @@ In PROMPT.md files, reference agents with `@agent-name`:
 | Functions Framework | 5 | All `main.py` in Cloud Run functions |
 | Computed Fields | 15 | `LineItem.amount`, `ExtractedInvoice.line_item_count`, `gen/schemas/invoice.py` |
 | Model Validators | 7 | `ExtractedInvoice.validate_dates()`, `validate_line_items_total()` |
-| Test Functions | 196 | Across 13 test files in `tests/`, `functions/gcp/v1/tests/`, `gen/tests/` |
+| Test Functions | 204 | Across 14 test files in `tests/`, `functions/gcp/v1/tests/`, `gen/tests/` |
 
 ### Code Quality Rules
 
@@ -500,6 +509,7 @@ infra/environments/
 
 | Date | Changes |
 | ---- | ------- |
+| 2026-01-31 | Sync: Added Active Features section with PIPELINE_OBSERVABILITY_METRICS; added timing.py utility to Shared Components; updated test count (196 → 204 tests across 14 files) |
 | 2026-01-31 | Sync: Updated pattern counts (Pydantic: 20, Dataclasses: 20, Computed Fields: 15, Model Validators: 7); added 196 test functions; added CI/CD Pipelines section with 6 GitHub Actions workflows |
 | 2026-01-31 | Sync: Added functions/gcp/v1/ with 5 Cloud Run functions, infra/ with Terraform modules, tests/smoke/, src/invoice_extractor/; updated shipped features (5); added /readme-maker command |
 | 2026-01-29 | Sync: Added design/, archive/, examples folders; updated agent counts per category |
