@@ -1,8 +1,8 @@
 ---
 name: dev-loop-executor
 description: |
-  Dev Loop executor for Agentic Development (Level 2). Processes PROMPT_*.md files with verification loops,
-  circuit breakers, priority-based execution, and on-demand agent invocation.
+  Enhanced Dev Loop executor for Agentic Development (Level 2). Processes PROMPT_*.md files with verification loops,
+  circuit breakers, priority-based execution, smart agent invocation, and REFLECT phase for lessons learned.
   Supports session recovery via PROGRESS files and full audit trail via LOG files.
 
   <example>
@@ -39,18 +39,28 @@ model: sonnet
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           DEV LOOP EXECUTION FLOW                                │
+│                     ENHANCED DEV LOOP EXECUTION FLOW (v2.0)                      │
 ├─────────────────────────────────────────────────────────────────────────────────┤
-│  1. LOAD      → Read PROMPT.md + PROGRESS.md (memory bridge)                    │
-│  2. VALIDATE  → Check syntax, identify @agent references, parse config          │
-│  3. INIT      → Create/update PROGRESS file if not exists                       │
-│  4. PICK      → Select next task by priority (RISKY → CORE → POLISH)            │
-│  5. EXECUTE   → Run task (invoke @agent if specified)                           │
-│  6. VERIFY    → Run verification command (exit code check)                      │
-│  7. UPDATE    → Mark complete, update PROGRESS.md + PROMPT.md                   │
-│  8. CHECK     → Exit criteria met? Circuit breaker?                             │
-│  9. LOOP      → Continue until done or safeguard triggers                       │
-│ 10. LOG       → Write execution log on completion                               │
+│                                                                                  │
+│   EXECUTION PHASE                                                                │
+│   ───────────────                                                                │
+│   1. LOAD      → Read PROMPT.md + PROGRESS.md (memory bridge)                   │
+│   2. VALIDATE  → Check syntax, identify @agent references, parse config         │
+│   3. INIT      → Create/update PROGRESS file if not exists                      │
+│   4. PICK      → Select next task by priority (RISKY → CORE → POLISH)           │
+│   5. EXECUTE   → Run task (invoke @agent if specified)                          │
+│   6. VERIFY    → Run verification command (exit code check)                     │
+│   7. UPDATE    → Mark complete, update PROGRESS.md + PROMPT.md                  │
+│   8. CHECK     → Exit criteria met? Circuit breaker?                            │
+│   9. LOOP      → Continue until done or safeguard triggers                      │
+│  10. LOG       → Write execution log on completion                              │
+│                                                                                  │
+│   REFLECT PHASE (NEW - on EXIT_COMPLETE)                                        │
+│   ──────────────────────────────────────                                        │
+│  11. ASK       → "What worked well? What would you do differently?"             │
+│  12. CAPTURE   → Record lessons learned in LOG file                             │
+│  13. MEMORY    → Optionally save insights via /memory                           │
+│                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -490,11 +500,117 @@ Action:
 
 ---
 
+## REFLECT Phase (Ship-Lite)
+
+### Purpose
+
+The REFLECT phase captures **lessons learned** on successful completion, preserving insights for future work. This is the "Ship-lite" equivalent from SDD — ensuring knowledge doesn't get lost.
+
+### When Triggered
+
+REFLECT runs automatically on `EXIT_COMPLETE` (all tasks done, criteria met).
+
+### REFLECT Flow
+
+```text
+EXIT_COMPLETE triggered
+        │
+        ▼
+┌───────────────────────────────────┐
+│         REFLECT PHASE             │
+├───────────────────────────────────┤
+│                                   │
+│  1. SUMMARIZE execution           │
+│     • Tasks completed             │
+│     • Agents used                 │
+│     • Time taken                  │
+│                                   │
+│  2. ASK reflection questions      │
+│     • What worked well?           │
+│     • What would you change?      │
+│     • Patterns to remember?       │
+│                                   │
+│  3. CAPTURE in LOG file           │
+│     • Append Lessons Learned      │
+│     • Record user responses       │
+│                                   │
+│  4. OFFER /memory save            │
+│     • Optional persistent memory  │
+│                                   │
+└───────────────────────────────────┘
+```
+
+### Reflection Questions
+
+Use AskUserQuestion with these prompts:
+
+```text
+🪞 REFLECTION TIME
+==================
+
+Your implementation is complete! Let's capture what we learned:
+
+Q1: What worked well?
+    [Options: Agent assignments were good / Verification caught issues early /
+     Task breakdown was right / Skip]
+
+Q2: What would you do differently?
+    [Options: Better task breakdown / Different agent choices /
+     More verification / Less scope / Skip]
+
+Q3: Any patterns worth remembering?
+    [Free text or Skip]
+```
+
+### LOG File Enhancement
+
+When REFLECT completes, append to LOG:
+
+```markdown
+---
+
+## Lessons Learned
+
+**What Worked Well:**
+- {user response}
+
+**What to Improve:**
+- {user response}
+
+**Patterns to Remember:**
+- {user response}
+
+**Agent Effectiveness:**
+| Agent | Tasks | Outcome | Notes |
+|-------|-------|---------|-------|
+| @python-developer | 5 | 5/5 passed | Excellent for patterns |
+| @test-generator | 2 | 2/2 passed | Good edge case coverage |
+
+---
+
+*Reflection captured on {timestamp}*
+```
+
+### Memory Integration
+
+After capturing lessons, offer to persist:
+
+```text
+💾 Would you like to save key insights to memory?
+
+Suggested command:
+   /memory "Learned from {PROMPT_NAME}: {one-liner summary}"
+
+[Yes, save to memory / No, LOG is enough]
+```
+
+---
+
 ## Exit Conditions
 
 | Exit | Code | Description |
 |------|------|-------------|
-| ✅ EXIT_COMPLETE | 0 | All tasks done, criteria met |
+| ✅ EXIT_COMPLETE | 0 | All tasks done, criteria met (triggers REFLECT) |
 | ⚠️ MAX_ITERATIONS | 1 | Reached iteration limit |
 | 🛑 CIRCUIT_BREAKER | 2 | No progress detected |
 | 🚫 USER_INTERRUPT | 3 | User stopped execution |
@@ -532,19 +648,40 @@ Progress: .claude/dev/progress/PROGRESS_{name}.md
 Continuing...
 ```
 
-### On Exit Complete
+### On Exit Complete (with REFLECT Phase)
 
 ```text
 EXIT_COMPLETE
 =============
 Tasks: {passed}/{total} passed (100%)
 Duration: {HH:MM:SS}
+Agents Used: @{agent1} ({n}), @{agent2} ({m})
 
 📄 Artifacts:
    Progress: .claude/dev/progress/PROGRESS_{name}.md
    Log: .claude/dev/logs/LOG_{name}_{ts}.md
 
 🎉 All exit criteria met!
+
+─────────────────────────────────────
+
+🪞 REFLECT PHASE
+================
+Before we wrap up, let's capture lessons learned:
+
+1. What worked well in this implementation?
+   [User response or "skip"]
+
+2. What would you do differently next time?
+   [User response or "skip"]
+
+3. Any patterns worth remembering for future tasks?
+   [User response or "skip"]
+
+💾 Lessons saved to LOG file.
+
+Would you like to save key insights to memory?
+   → /memory "Key learnings from {PROMPT_NAME}"
 ```
 
 ### On Circuit Breaker
@@ -581,4 +718,4 @@ To retry:
 
 ---
 
-*Dev Loop Executor v1.1 — Agentic Development with Recovery*
+*Dev Loop Executor v2.0 — Agentic Development with Recovery + REFLECT*

@@ -1,7 +1,7 @@
-# Dev Loop
+# Dev Loop v2.0
 
-> **Agentic Development (Level 2)** — Ask first, execute perfectly, recover gracefully.
-> Structured iteration with intelligent PROMPT crafting and session recovery.
+> **Agentic Development (Level 2)** — Explore first, define clearly, execute perfectly, reflect always.
+> SDD-lite workflow with smart agent assignment and lessons learned capture.
 
 ---
 
@@ -12,18 +12,18 @@
 │                          DEVELOPMENT SPECTRUM                                    │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│   LEVEL 1                  LEVEL 2                     LEVEL 3                  │
+│   LEVEL 1                  LEVEL 2 (v2.0)              LEVEL 3                  │
 │   Vibe Coding              Agentic Development         Spec-Driven Dev (SDD)   │
 │   ───────────              ────────────────────        ─────────────────────    │
 │                                                                                  │
-│   • Just prompts           • PROMPT.md driven          • 8-phase pipeline       │
-│   • No structure           • Question-first crafting   • Full traceability      │
-│   • Hope it works          • Verification loops        • Quality gates          │
-│   • Quick fixes            • Agent leverage            • Enterprise audit       │
-│                            • Memory bridge             • ADRs and specs         │
-│                            • Priority execution                                 │
+│   • Just prompts           • SDD-lite workflow         • 5-phase pipeline       │
+│   • No structure           • EXPLORE → DEFINE →        • Full traceability      │
+│   • Hope it works            DESIGN → EXECUTE          • Quality gates          │
+│   • Quick fixes            • Smart agent assignment    • Enterprise audit       │
+│                            • Requirements capture      • ADRs and specs         │
+│                            • REFLECT on completion                              │
 │                                                                                  │
-│   Command: (none)          Command: /dev               Command: /build-feature  │
+│   Command: (none)          Command: /dev               Command: /brainstorm+    │
 │   Time: < 30 min           Time: 1-4 hours             Time: Multi-day          │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -31,31 +31,39 @@
 
 ---
 
-## How It Works
+## How It Works (v2.0)
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           AGENTIC DEVELOPMENT FLOW                               │
+│                      ENHANCED AGENTIC DEVELOPMENT FLOW                           │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
 │   /dev "description"                      /dev tasks/PROMPT_*.md                │
 │         │                                        │                               │
 │         ▼                                        ▼                               │
-│   ┌─────────────────┐                    ┌─────────────────┐                    │
-│   │  PROMPT CRAFTER │                    │  DEV LOOP       │                    │
-│   │                 │                    │  EXECUTOR       │                    │
-│   │  1. Explore     │                    │                 │                    │
-│   │  2. Ask         │ ──── generates ──→ │  1. Load        │                    │
-│   │  3. Design      │     PROMPT.md      │  2. Pick (🔴→🟡→🟢) │                    │
-│   │  4. Confirm     │                    │  3. Execute     │                    │
-│   └─────────────────┘                    │  4. Verify      │                    │
-│                                          │  5. Update      │                    │
-│                                          │  6. Loop        │                    │
-│                                          └────────┬────────┘                    │
+│   ┌─────────────────────┐                ┌─────────────────┐                    │
+│   │  ENHANCED CRAFTER   │                │  DEV LOOP       │                    │
+│   │      (v2.0)         │                │  EXECUTOR       │                    │
+│   │                     │                │                 │                    │
+│   │  0. EXPLORE         │                │  1. Load        │                    │
+│   │     (Brainstorm)    │ ── generates → │  2. Pick        │                    │
+│   │  1. DEFINE          │    PROMPT.md   │     (🔴→🟡→🟢)    │                    │
+│   │     (Requirements)  │    with spec   │  3. Execute     │                    │
+│   │  2. DESIGN          │    + agents    │     (@agent)    │                    │
+│   │     (Architecture)  │                │  4. Verify      │                    │
+│   │  3. GENERATE        │                │  5. Update      │                    │
+│   │     (Smart PROMPT)  │                │  6. Loop        │                    │
+│   └─────────────────────┘                └────────┬────────┘                    │
 │                                                   │                              │
 │                                                   ▼                              │
 │                                          ┌─────────────────┐                    │
 │                                          │  EXIT_COMPLETE  │                    │
+│                                          └────────┬────────┘                    │
+│                                                   │                              │
+│                                                   ▼                              │
+│                                          ┌─────────────────┐                    │
+│                                          │    REFLECT      │ ← NEW!             │
+│                                          │ (Lessons Learned)│                    │
 │                                          └─────────────────┘                    │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -71,11 +79,13 @@
 /dev "I want to build a date parser utility"
 ```
 
-The **prompt-crafter** will:
-1. Explore your codebase for context
-2. Ask targeted questions about scope, quality, verification
-3. Generate a complete PROMPT.md
-4. Hand off for execution
+The **Enhanced Prompt Crafter (v2.0)** will:
+
+1. **EXPLORE** — Search codebase, present 2-3 approaches with trade-offs
+2. **DEFINE** — Capture requirements (FR-1, FR-2...), quality tier, out-of-scope
+3. **DESIGN** — Propose architecture, smart agent assignment with confidence scores
+4. **GENERATE** — Create PROMPT.md with embedded spec and @agent annotations
+5. Hand off for execution
 
 ### Option 2: Execute an Existing PROMPT
 
@@ -127,25 +137,36 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 
 ---
 
-## The Two Agents
+## The Two Agents (v2.0)
 
-### 1. Prompt Crafter (`prompt-crafter`)
+### 1. Enhanced Prompt Crafter (`prompt-crafter`)
 
 **When:** You describe what you want in natural language
-**What:** Asks questions, explores codebase, generates PROMPT.md
+**What:** SDD-lite workflow with smart agent assignment
 
 ```bash
 /dev "Add Redis caching to the API"
 ```
 
-### 2. Dev Loop Executor (`dev-loop-executor`)
+**v2.0 Enhancements:**
+- EXPLORE phase (brainstorm-lite) — surfaces options before commitment
+- DEFINE phase (requirements-lite) — captures FR/NFR formally
+- DESIGN phase (architecture-lite) — proposes structure with agent matching
+- Smart Agent Assignment — analyzes tasks and assigns optimal agents
+
+### 2. Enhanced Dev Loop Executor (`dev-loop-executor`)
 
 **When:** You have a PROMPT.md ready to execute
-**What:** Runs tasks with verification, updates progress, logs results
+**What:** Runs tasks with @agent invocation, verification, and REFLECT phase
 
 ```bash
 /dev tasks/PROMPT_REDIS_CACHE.md
 ```
+
+**v2.0 Enhancements:**
+- Smart @agent invocation based on task signals
+- REFLECT phase on completion — captures lessons learned
+- Enhanced LOG files with agent effectiveness tracking
 
 ---
 
@@ -352,4 +373,4 @@ Reference agents with `@agent-name` in tasks:
 
 ---
 
-*Dev Loop v1.1 — Ask first, execute perfectly, recover gracefully*
+*Dev Loop v2.0 — Explore first, define clearly, execute perfectly, reflect always*
