@@ -1,7 +1,7 @@
 # DLQ Processor - Cloud Run Function
 # Build from functions/gcp/v1: docker build -f deploy/dlq_processor.Dockerfile -t dlq-processor .
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 

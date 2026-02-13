@@ -1,7 +1,7 @@
 # BigQuery Writer - Cloud Run Function
 # Build from functions/gcp/v1: docker build -f deploy/bigquery_writer.Dockerfile -t bigquery-writer .
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
