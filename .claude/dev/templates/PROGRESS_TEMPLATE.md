@@ -1,6 +1,6 @@
 # PROGRESS: [NAME]
 
-> Memory bridge for Dev Loop iterations. Updated after each task completion.
+> Memory bridge for AgentLoop iterations. Updated after each task completion.
 
 ---
 
@@ -85,4 +85,4 @@
 
 ---
 
-*Dev Loop v1.1 — Memory bridge for session recovery*
+*AgentLoop v3.0 — Memory bridge for session recovery*

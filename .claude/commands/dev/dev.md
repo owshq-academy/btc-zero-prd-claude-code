@@ -1,6 +1,6 @@
 # /dev Command
 
-> **Dev Loop** — Agentic Development (Level 2) with structured iteration and intelligent routing.
+> **AgentLoop** — Agentic Development (Level 2) with structured iteration, Agent Matching Engine, and intelligent routing.
 
 ## Usage
 
@@ -35,9 +35,9 @@ The `/dev` command intelligently routes between two modes:
 │   User Input                              Action                                 │
 │   ──────────                              ──────                                 │
 │                                                                                  │
-│   /dev "description"         →  prompt-crafter (ask questions, build PROMPT)    │
-│   /dev tasks/PROMPT_*.md     →  dev-loop-executor (execute the PROMPT)          │
-│   /dev --list                →  Show available PROMPTs                          │
+│   /dev "description"         →  prompt-crafter (explore, define, match, generate)│
+│   /dev tasks/PROMPT_*.md     →  agentloop-executor (execute the PROMPT)          │
+│   /dev --list                →  Show available PROMPTs                           │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -49,9 +49,9 @@ The `/dev` command intelligently routes between two modes:
 When you provide a description (not a file path), the **prompt-crafter** agent:
 
 1. **Explores** the codebase for context
-2. **Asks** targeted questions to clarify requirements
-3. **Generates** a complete PROMPT.md file
-4. **Confirms** with you before handoff
+2. **Defines** requirements via targeted questions
+3. **Designs** architecture with the **Matching Engine** (fingerprint → decompose → score → chain → verify)
+4. **Generates** a complete PROMPT.md file with @agent assignments and confidence scores
 
 ```bash
 /dev "I want to create a Redis caching layer"
@@ -59,18 +59,20 @@ When you provide a description (not a file path), the **prompt-crafter** agent:
 
 **Output:**
 ```text
-PROMPT CRAFTER
-==============
+PROMPT CRAFTER (AgentLoop v3.0)
+===============================
 I'll help you create a ready-to-execute PROMPT for: Redis caching layer
 
-Let me explore the codebase and ask a few questions...
+Let me explore the codebase and guide you through the workflow...
 
-[Questions about scope, quality, integration, verification]
+[EXPLORE → DEFINE → DESIGN (Matching Engine) → GENERATE]
 
 ✅ PROMPT CREATED
 =================
 File: .claude/dev/tasks/PROMPT_REDIS_CACHE.md
 Tasks: 6 (🔴2 🟡3 🟢1)
+Chain: @codebase-explorer → @python-developer → @test-generator → @code-reviewer
+Confidence: HIGH (avg 0.89)
 
 To execute:
   /dev tasks/PROMPT_REDIS_CACHE.md
@@ -80,7 +82,7 @@ To execute:
 
 ## Mode 2: Execute (Existing PROMPT)
 
-When you provide a PROMPT file path, the **dev-loop-executor** agent:
+When you provide a PROMPT file path, the **agentloop-executor** agent:
 
 1. **Loads** PROMPT.md + existing PROGRESS.md
 2. **Picks** next task by priority (🔴→🟡→🟢)
@@ -88,6 +90,7 @@ When you provide a PROMPT file path, the **dev-loop-executor** agent:
 4. **Verifies** with objective commands
 5. **Updates** progress (memory bridge)
 6. **Loops** until done or safeguard triggers
+7. **Reflects** on completion (lessons learned + agent effectiveness)
 
 ```bash
 /dev tasks/PROMPT_REDIS_CACHE.md
@@ -108,7 +111,7 @@ When you provide a PROMPT file path, the **dev-loop-executor** agent:
 | Argument | Description |
 |----------|-------------|
 | `"description"` | Natural language request → triggers prompt-crafter |
-| `tasks/PROMPT_*.md` | Path to PROMPT file → triggers executor |
+| `tasks/PROMPT_*.md` | Path to PROMPT file → triggers agentloop-executor |
 | `--list` | List available PROMPTs in `.claude/dev/tasks/` |
 | `--mode` | Execution mode: `hitl` (default) or `afk` |
 | `--resume` | Resume from existing PROGRESS file (memory bridge) |
@@ -122,17 +125,17 @@ When you provide a PROMPT file path, the **dev-loop-executor** agent:
 ### Complete Flow
 
 ```text
-1. /dev "I want to build X"        # Craft phase
+1. /dev "I want to build X"        # Craft phase (with Matching Engine)
    ↓
-2. [Questions and clarifications]   # Interactive
+2. [EXPLORE → DEFINE → DESIGN]     # SDD-lite workflow
    ↓
 3. PROMPT.md generated              # Ready to execute
    ↓
 4. /dev tasks/PROMPT_X.md           # Execute phase
    ↓
-5. [Loop with verification]         # Automated
+5. [Loop with verification]         # Automated with agent chain
    ↓
-6. EXIT_COMPLETE                    # Done
+6. EXIT_COMPLETE → REFLECT          # Done + lessons learned
 ```
 
 ### Skip Crafting (If You Know What You Want)
@@ -156,14 +159,14 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
 │   LEVEL 1                  LEVEL 2                     LEVEL 3                  │
-│   Vibe Coding              Agentic Development         Spec-Driven Dev          │
-│   ───────────              ────────────────────        ───────────────          │
+│   Vibe Coding              AgentLoop                   AgentSpec SDD            │
+│   ───────────              ─────────                   ─────────────            │
 │                                                                                  │
-│   • Just prompts           • PROMPT.md driven          • 8-phase pipeline       │
-│   • No structure           • Verification loops        • Full traceability      │
+│   • Just prompts           • PROMPT.md driven          • 5-phase pipeline       │
+│   • No structure           • Matching Engine           • Full traceability      │
 │   • Hope it works          • Agent leverage            • Quality gates          │
 │   • Quick fixes            • Memory bridge             • Enterprise audit       │
-│                            • Question-first            • ADRs and specs         │
+│                            • SDD-lite workflow         • ADRs and specs         │
 │                                                                                  │
 │   Command: (none)          Command: /dev               Command: /build-feature  │
 │   Time: < 30 min           Time: 1-4 hours             Time: Multi-day          │
@@ -182,6 +185,7 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 /dev "I need a date parser that handles multiple formats"
 
 # Answer questions about scope, quality, verification
+# Matching Engine assigns agents with confidence scores
 # Get a generated PROMPT
 
 # Execute
@@ -205,6 +209,7 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 /dev "Refactor the authentication module to use JWT"
 
 # Questions about backward compatibility, tests
+# Matching Engine scores agents, builds chain
 # Generated PROMPT with risky tasks first
 
 /dev tasks/PROMPT_AUTH_REFACTOR.md --mode hitl
@@ -218,7 +223,7 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 
 # Output shows:
 # - Task summary (🔴 RISKY, 🟡 CORE, 🟢 POLISH counts)
-# - Agent references (@python-developer, @test-generator)
+# - Agent matching chain with confidence scores
 # - Verification commands
 # - Any validation issues
 ```
@@ -231,12 +236,6 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 
 # Resume from where you left off
 /dev tasks/PROMPT_REDIS_CACHE.md --resume
-
-# Executor will:
-# - Load completed tasks from PROGRESS file
-# - Skip already-done work
-# - Continue from next incomplete task
-# - Preserve key decisions and context
 ```
 
 ---
@@ -245,38 +244,12 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 
 The memory bridge system ensures no work is lost:
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              SESSION RECOVERY FLOW                               │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│   Session 1 (Interrupted)              Session 2 (Resumed)                      │
-│   ────────────────────────             ──────────────────────                   │
-│                                                                                  │
-│   /dev tasks/PROMPT_X.md               /dev tasks/PROMPT_X.md --resume          │
-│         │                                    │                                   │
-│         ▼                                    ▼                                   │
-│   ┌─────────────┐                      ┌─────────────┐                          │
-│   │ Task 1 ✅   │                      │ Load        │                          │
-│   │ Task 2 ✅   │ ──── saves ────→     │ PROGRESS.md │                          │
-│   │ Task 3 🔄   │     progress         └──────┬──────┘                          │
-│   │ [TIMEOUT]   │                             │                                  │
-│   └─────────────┘                             ▼                                  │
-│                                        ┌─────────────┐                          │
-│                                        │ Skip 1, 2   │                          │
-│                                        │ Continue 3  │                          │
-│                                        │ Task 4...   │                          │
-│                                        └─────────────┘                          │
-│                                                                                  │
-└─────────────────────────────────────────────────────────────────────────────────┘
-```
-
 ### Recovery Files
 
 | File | Purpose |
 |------|---------|
 | `progress/PROGRESS_{NAME}.md` | Tracks completed tasks, key decisions, iteration log |
-| `logs/LOG_{NAME}_{TS}.md` | Final execution report with statistics |
+| `logs/LOG_{NAME}_{TS}.md` | Final execution report with statistics + agent effectiveness |
 
 ---
 
@@ -285,6 +258,8 @@ The memory bridge system ensures no work is lost:
 ```text
 .claude/dev/
 ├── _index.md                        # Documentation
+├── docs/                            # Supporting docs
+│   └── AGENT_MATCHING_ENGINE.md     # Core matching algorithm
 ├── tasks/                           # Your PROMPT files (active work)
 │   └── PROMPT_*.md
 ├── progress/                        # Memory bridge (auto-managed)
@@ -304,12 +279,13 @@ The memory bridge system ensures no work is lost:
 
 | Resource | Path |
 |----------|------|
-| Level 2 Overview | `.claude/dev/_index.md` |
+| AgentLoop Overview | `.claude/dev/_index.md` |
+| Matching Engine | `.claude/dev/docs/AGENT_MATCHING_ENGINE.md` |
 | Prompt Crafter Agent | `.claude/agents/dev/prompt-crafter.md` |
-| Dev Loop Executor | `.claude/agents/dev/dev-loop-executor.md` |
+| AgentLoop Executor | `.claude/agents/dev/agentloop-executor.md` |
 | PROMPT Template | `.claude/dev/templates/PROMPT_TEMPLATE.md` |
-| Level 3 (SDD) | `.claude/sdd/_index.md` |
+| Level 3 (AgentSpec) | `.claude/sdd/_index.md` |
 
 ---
 
-*Dev Loop v1.1 — Ask first, execute perfectly, recover gracefully*
+*AgentLoop v3.0 — Explore first, match intelligently, execute perfectly, recover gracefully*

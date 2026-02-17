@@ -1,6 +1,6 @@
 # PROMPT: EXAMPLE_FEATURE
 
-> Example PROMPT for Dev Loop — Building a Python utility
+> Example PROMPT for AgentLoop — Building a Python utility
 
 ---
 
@@ -88,7 +88,7 @@ feedback_loops:
 **Decision Log:**
 - [ ] Library choice: [TBD - dateutil or manual parsing?]
 
-This is an example PROMPT file demonstrating how to build a simple feature using Dev Loop.
+This is an example PROMPT file demonstrating how to build a simple feature using AgentLoop.
 Copy this file to `.claude/dev/tasks/` and customize it for your use case.
 
 ---

@@ -347,5 +347,5 @@ black>=23.0
 
 ---
 
-*PROMPT crafted by prompt-crafter agent for dev-loop-executor*
+*PROMPT crafted by prompt-crafter agent for agentloop-executor*
 *Ready for execution: `/dev tasks/PROMPT_INVOICE_EXTRACTOR.md`*

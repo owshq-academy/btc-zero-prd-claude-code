@@ -1,7 +1,7 @@
-# Dev Loop v2.0
+# AgentLoop v3.0
 
-> **Agentic Development (Level 2)** — Explore first, define clearly, execute perfectly, reflect always.
-> SDD-lite workflow with smart agent assignment and lessons learned capture.
+> **Agentic Development (Level 2)** — Explore first, define clearly, match intelligently, reflect always.
+> SDD-lite workflow with the Agent Matching Engine for context-aware agent assignment.
 
 ---
 
@@ -12,14 +12,14 @@
 │                          DEVELOPMENT SPECTRUM                                    │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│   LEVEL 1                  LEVEL 2 (v2.0)              LEVEL 3                  │
+│   LEVEL 1                  LEVEL 2 (AgentLoop)        LEVEL 3 (AgentSpec)      │
 │   Vibe Coding              Agentic Development         Spec-Driven Dev (SDD)   │
 │   ───────────              ────────────────────        ─────────────────────    │
 │                                                                                  │
 │   • Just prompts           • SDD-lite workflow         • 5-phase pipeline       │
 │   • No structure           • EXPLORE → DEFINE →        • Full traceability      │
 │   • Hope it works            DESIGN → EXECUTE          • Quality gates          │
-│   • Quick fixes            • Smart agent assignment    • Enterprise audit       │
+│   • Quick fixes            • Agent Matching Engine     • Enterprise audit       │
 │                            • Requirements capture      • ADRs and specs         │
 │                            • REFLECT on completion                              │
 │                                                                                  │
@@ -31,30 +31,30 @@
 
 ---
 
-## How It Works (v2.0)
+## How It Works (v3.0)
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                      ENHANCED AGENTIC DEVELOPMENT FLOW                           │
+│                           AGENTLOOP FLOW (v3.0)                                  │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
 │   /dev "description"                      /dev tasks/PROMPT_*.md                │
 │         │                                        │                               │
 │         ▼                                        ▼                               │
 │   ┌─────────────────────┐                ┌─────────────────┐                    │
-│   │  ENHANCED CRAFTER   │                │  DEV LOOP       │                    │
-│   │      (v2.0)         │                │  EXECUTOR       │                    │
+│   │  PROMPT CRAFTER     │                │  AGENTLOOP      │                    │
+│   │      (v3.0)         │                │  EXECUTOR       │                    │
 │   │                     │                │                 │                    │
 │   │  0. EXPLORE         │                │  1. Load        │                    │
 │   │     (Brainstorm)    │ ── generates → │  2. Pick        │                    │
-│   │  1. DEFINE          │    PROMPT.md   │     (🔴→🟡→🟢)    │                    │
+│   │  1. DEFINE          │    PROMPT.md   │     (🔴→🟡→🟢)  │                    │
 │   │     (Requirements)  │    with spec   │  3. Execute     │                    │
-│   │  2. DESIGN          │    + agents    │     (@agent)    │                    │
-│   │     (Architecture)  │                │  4. Verify      │                    │
-│   │  3. GENERATE        │                │  5. Update      │                    │
-│   │     (Smart PROMPT)  │                │  6. Loop        │                    │
-│   └─────────────────────┘                └────────┬────────┘                    │
-│                                                   │                              │
+│   │  2. DESIGN          │    + matching  │     (@agent)    │                    │
+│   │     (Matching       │    engine      │  4. Verify      │                    │
+│   │      Engine)        │                │  5. Update      │                    │
+│   │  3. GENERATE        │                │  6. Loop        │                    │
+│   │     (Smart PROMPT)  │                └────────┬────────┘                    │
+│   └─────────────────────┘                         │                              │
 │                                                   ▼                              │
 │                                          ┌─────────────────┐                    │
 │                                          │  EXIT_COMPLETE  │                    │
@@ -62,7 +62,7 @@
 │                                                   │                              │
 │                                                   ▼                              │
 │                                          ┌─────────────────┐                    │
-│                                          │    REFLECT      │ ← NEW!             │
+│                                          │    REFLECT      │                    │
 │                                          │ (Lessons Learned)│                    │
 │                                          └─────────────────┘                    │
 │                                                                                  │
@@ -79,11 +79,11 @@
 /dev "I want to build a date parser utility"
 ```
 
-The **Enhanced Prompt Crafter (v2.0)** will:
+The **Prompt Crafter (v3.0)** will:
 
 1. **EXPLORE** — Search codebase, present 2-3 approaches with trade-offs
 2. **DEFINE** — Capture requirements (FR-1, FR-2...), quality tier, out-of-scope
-3. **DESIGN** — Propose architecture, smart agent assignment with confidence scores
+3. **DESIGN** — Fingerprint project, decompose task, score agents, build execution chain
 4. **GENERATE** — Create PROMPT.md with embedded spec and @agent annotations
 5. Hand off for execution
 
@@ -113,6 +113,9 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 ├── _index.md                        # This documentation
 ├── readme.md                        # Feature overview
 │
+├── docs/                            # Supporting documentation
+│   └── AGENT_MATCHING_ENGINE.md     # Matching Engine algorithm
+│
 ├── tasks/                           # Your PROMPT files (active work)
 │   └── PROMPT_*.md
 │
@@ -137,24 +140,25 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 
 ---
 
-## The Two Agents (v2.0)
+## The Two Agents (v3.0)
 
-### 1. Enhanced Prompt Crafter (`prompt-crafter`)
+### 1. Prompt Crafter (`prompt-crafter`)
 
 **When:** You describe what you want in natural language
-**What:** SDD-lite workflow with smart agent assignment
+**What:** SDD-lite workflow with the Agent Matching Engine
 
 ```bash
 /dev "Add Redis caching to the API"
 ```
 
-**v2.0 Enhancements:**
+**v3.0 Enhancements:**
 - EXPLORE phase (brainstorm-lite) — surfaces options before commitment
 - DEFINE phase (requirements-lite) — captures FR/NFR formally
-- DESIGN phase (architecture-lite) — proposes structure with agent matching
-- Smart Agent Assignment — analyzes tasks and assigns optimal agents
+- DESIGN phase (matching engine) — 5-step algorithm: FINGERPRINT → DECOMPOSE → SCORE → CHAIN → VERIFY
+- 4-dimension agent scoring: Technology (35%) + Task (30%) + Domain (25%) + Phase (10%)
+- Tier 2 specialist activation via Project DNA
 
-### 2. Enhanced Dev Loop Executor (`dev-loop-executor`)
+### 2. AgentLoop Executor (`agentloop-executor`)
 
 **When:** You have a PROMPT.md ready to execute
 **What:** Runs tasks with @agent invocation, verification, and REFLECT phase
@@ -163,14 +167,31 @@ cp .claude/dev/templates/PROMPT_TEMPLATE.md \
 /dev tasks/PROMPT_REDIS_CACHE.md
 ```
 
-**v2.0 Enhancements:**
-- Smart @agent invocation based on task signals
-- REFLECT phase on completion — captures lessons learned
-- Enhanced LOG files with agent effectiveness tracking
+**v3.0 Enhancements:**
+- Execution chain awareness (follows agent sequence from Matching Engine)
+- Agent effectiveness tracking in LOG files
+- REFLECT phase captures Matching Engine feedback
+- Enhanced agent roster (14 agents available for invocation)
 
 ---
 
 ## Key Concepts
+
+### Agent Matching Engine
+
+The core intelligence of AgentLoop. Instead of keyword matching, it uses a 5-step algorithm:
+
+```text
+FINGERPRINT → DECOMPOSE → SCORE → CHAIN → VERIFY
+(project DNA)  (task DNA)  (4-dim)  (sequence)  (sanity)
+```
+
+**Scoring Formula:**
+```text
+FINAL_SCORE = (TECH × 0.35) + (TASK × 0.30) + (DOMAIN × 0.25) + (PHASE × 0.10)
+```
+
+See `.claude/dev/docs/AGENT_MATCHING_ENGINE.md` for full algorithm.
 
 ### Quality Tiers
 
@@ -272,7 +293,7 @@ The memory bridge solves these with automatic state persistence.
 
 # Shows:
 # - Task counts by priority (🔴 🟡 🟢)
-# - Agent references (@python-developer, etc.)
+# - Agent matching chain
 # - Verification commands
 # - Any validation issues
 ```
@@ -310,7 +331,16 @@ Reference agents with `@agent-name` in tasks:
 | `@python-developer` | Writing Python code |
 | `@test-generator` | Adding tests |
 | `@code-reviewer` | Quality checks |
+| `@code-cleaner` | Refactoring |
+| `@code-documenter` | Documentation |
 | `@llm-specialist` | Prompt engineering |
+| `@function-developer` | Cloud Run functions |
+| `@extraction-specialist` | Document AI extraction |
+| `@infra-deployer` | Terraform deployment |
+| `@pipeline-architect` | Pipeline architecture |
+| `@spark-specialist` | Spark optimization |
+| `@ci-cd-specialist` | CI/CD pipelines |
+| `@genai-architect` | AI system design |
 
 ---
 
@@ -328,8 +358,8 @@ Reference agents with `@agent-name` in tasks:
 
 ## When to Use Level 2 vs Level 3
 
-| Scenario | Level 2 (/dev) | Level 3 (/build-feature) |
-|----------|----------------|--------------------------|
+| Scenario | Level 2 (AgentLoop) | Level 3 (AgentSpec) |
+|----------|---------------------|---------------------|
 | KB building | ✅ | |
 | Prototypes | ✅ | |
 | Single features | ✅ | |
@@ -344,10 +374,12 @@ Reference agents with `@agent-name` in tasks:
 ## Best Practices
 
 1. **Start with questions** — Use `/dev "description"` to let crafter guide you
-2. **Prioritize risky work** — Fail fast on hard problems
-3. **Use verification commands** — Objective, exit-code based
-4. **Track progress** — Memory bridge reduces token burn
-5. **Take small steps** — One logical change per task
+2. **Trust the Matching Engine** — Let it fingerprint and score before overriding
+3. **Prioritize risky work** — Fail fast on hard problems
+4. **Use verification commands** — Objective, exit-code based
+5. **Track progress** — Memory bridge reduces token burn
+6. **Take small steps** — One logical change per task
+7. **Reflect** — Capture lessons for continuous improvement
 
 ---
 
@@ -357,7 +389,8 @@ Reference agents with `@agent-name` in tasks:
 |------|---------|
 | `.claude/commands/dev/dev.md` | Command definition |
 | `.claude/agents/dev/prompt-crafter.md` | PROMPT crafting agent |
-| `.claude/agents/dev/dev-loop-executor.md` | Execution agent |
+| `.claude/agents/dev/agentloop-executor.md` | Execution agent |
+| `.claude/dev/docs/AGENT_MATCHING_ENGINE.md` | Matching Engine algorithm |
 | `.claude/dev/templates/PROMPT_TEMPLATE.md` | Blank PROMPT template |
 | `.claude/dev/templates/PROMPT_EXAMPLE_FEATURE.md` | Example: Python utility |
 | `.claude/dev/templates/PROMPT_EXAMPLE_KB.md` | Example: KB domain |
@@ -373,4 +406,4 @@ Reference agents with `@agent-name` in tasks:
 
 ---
 
-*Dev Loop v2.0 — Explore first, define clearly, execute perfectly, reflect always*
+*AgentLoop v3.0 — Explore first, define clearly, match intelligently, reflect always*

@@ -1,6 +1,6 @@
 # PROMPT: EXAMPLE_KB
 
-> Example PROMPT for Dev Loop — Building a Knowledge Base
+> Example PROMPT for AgentLoop — Building a Knowledge Base
 
 ---
 
@@ -84,7 +84,7 @@ feedback_loops:
 
 ## Notes
 
-This is an example PROMPT file demonstrating how to build a KB domain using Dev Loop.
+This is an example PROMPT file demonstrating how to build a KB domain using AgentLoop.
 Copy this file to `.claude/dev/tasks/` and customize it for your use case.
 
 ---

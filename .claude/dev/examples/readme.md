@@ -1,4 +1,4 @@
-# Dev Loop Examples
+# AgentLoop Examples
 
 > Real-world example artifacts from the Invoice Extractor feature
 
@@ -16,14 +16,14 @@
 
 ## Using These Examples
 
-These examples demonstrate the full Dev Loop workflow for a real feature:
+These examples demonstrate the full AgentLoop workflow for a real feature:
 
 ```text
 /dev "I want to build an invoice extractor" → prompt-crafter asks questions
          ↓
 PROMPT_INVOICE_EXTRACTOR.md                 → Generated PROMPT (352 lines)
          ↓
-/dev tasks/PROMPT_INVOICE_EXTRACTOR.md      → dev-loop-executor runs
+/dev tasks/PROMPT_INVOICE_EXTRACTOR.md      → agentloop-executor runs
          ↓
 PROGRESS_INVOICE_EXTRACTOR.md               → Memory bridge (updated each iteration)
          ↓
@@ -80,7 +80,7 @@ Exit Reason:     EXIT_COMPLETE (success)
 These examples use project-specific details (GCP, Gemini, Parquet, invoice extraction) but the structure and patterns are framework-agnostic. Use them as references for understanding:
 
 1. How `prompt-crafter` generates comprehensive PROMPTs
-2. How `dev-loop-executor` tracks progress and enables recovery
+2. How `agentloop-executor` tracks progress and enables recovery
 3. How the priority system (RISKY → CORE → POLISH) organizes work
 4. How agent references (`@agent-name`) enable specialist delegation
 5. How verification commands ensure objective completion

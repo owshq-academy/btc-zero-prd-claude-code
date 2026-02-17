@@ -1,8 +1,8 @@
-# Dev Loop
+# AgentLoop
 
-> **Agentic Development (Level 2)** — Ask first, execute perfectly, recover gracefully.
+> **Agentic Development (Level 2)** — Explore first, match intelligently, execute perfectly, recover gracefully.
 
-Dev Loop is a structured iteration system that sits between "vibe coding" and full Spec-Driven Development (SDD). It provides PROMPT-driven task execution with verification loops, session recovery, and intelligent agent orchestration.
+AgentLoop is a structured iteration system that sits between "vibe coding" and full Spec-Driven Development (AgentSpec). It provides PROMPT-driven task execution with the Agent Matching Engine for context-aware agent assignment, verification loops, session recovery, and intelligent orchestration.
 
 ---
 
@@ -17,8 +17,9 @@ Dev Loop is a structured iteration system that sits between "vibe coding" and fu
 The **Prompt Crafter** will:
 1. Explore your codebase for context
 2. Ask targeted questions about scope and quality
-3. Generate a complete `PROMPT.md` file
-4. Hand off for execution
+3. Run the **Matching Engine** to assign optimal agents
+4. Generate a complete `PROMPT.md` file
+5. Hand off for execution
 
 ### Option 2: Execute Existing PROMPT
 
@@ -42,13 +43,13 @@ cp templates/PROMPT_TEMPLATE.md tasks/PROMPT_MY_TASK.md
 
 | Feature | Description |
 |---------|-------------|
-| **Question-First** | Prompt Crafter asks before building |
+| **Agent Matching Engine** | Context-aware 4-dimension agent scoring |
+| **SDD-Lite Workflow** | EXPLORE → DEFINE → DESIGN → GENERATE |
 | **Priority Execution** | 🔴 RISKY → 🟡 CORE → 🟢 POLISH |
 | **Verification Loops** | Objective, exit-code based checks |
 | **Memory Bridge** | PROGRESS files prevent token burn |
 | **Session Recovery** | `--resume` continues interrupted work |
-| **Dry Run** | `--dry-run` validates before execution |
-| **Agent Integration** | `@agent-name` delegates to specialists |
+| **REFLECT Phase** | Captures lessons learned + agent effectiveness |
 | **Audit Trail** | LOG files capture execution history |
 
 ---
@@ -59,6 +60,8 @@ cp templates/PROMPT_TEMPLATE.md tasks/PROMPT_MY_TASK.md
 .claude/dev/
 ├── README.md                        # This file
 ├── _index.md                        # Full documentation
+├── docs/                            # Supporting documentation
+│   └── AGENT_MATCHING_ENGINE.md     # Core matching algorithm
 │
 ├── tasks/                           # Your PROMPT files (active work)
 │   └── PROMPT_*.md
@@ -105,148 +108,30 @@ cp templates/PROMPT_TEMPLATE.md tasks/PROMPT_MY_TASK.md
 
 ---
 
-## PROMPT Structure
+## Agent Matching Engine
 
-Every PROMPT file follows this structure:
+The core intelligence of AgentLoop. A 5-step algorithm that goes beyond keyword matching:
 
-```markdown
-# PROMPT: NAME
-
-## Goal
-Single sentence describing "done" state
-
-## Quality Tier
-prototype | production | library
-
-## Tasks (Prioritized)
-### 🔴 RISKY (Do First)
-- [ ] Architectural decisions, unknowns
-
-### 🟡 CORE
-- [ ] Main implementation
-- [ ] @agent-name: Task for specialist
-
-### 🟢 POLISH (Do Last)
-- [ ] Cleanup, optimization
-
-## Exit Criteria
-- [ ] Objective verification: `command`
-
-## Config
-mode: hitl
-max_iterations: 30
+```text
+FINGERPRINT → DECOMPOSE → SCORE → CHAIN → VERIFY
+(project DNA)  (task DNA)  (4-dim)  (sequence)  (sanity)
 ```
 
----
-
-## Task Priority System
-
-| Priority | Symbol | Execute Order | Use For |
-|----------|--------|---------------|---------|
-| RISKY | 🔴 | First | Fail fast on hard problems |
-| CORE | 🟡 | Second | Main implementation |
-| POLISH | 🟢 | Last | Cleanup and optimization |
-
----
-
-## Quality Tiers
-
-| Tier | Expectations |
-|------|--------------|
-| `prototype` | Speed over perfection. Minimal verification. |
-| `production` | Tests required. Best practices. Full verification. |
-| `library` | Backward compatibility. Full documentation. |
-
----
-
-## Session Recovery
-
-Dev Loop automatically saves progress to enable session recovery:
-
-```bash
-# Session interrupted? Resume from where you left off:
-/dev tasks/PROMPT_MY_TASK.md --resume
+**Scoring Formula:**
+```text
+FINAL_SCORE = (TECH × 0.35) + (TASK × 0.30) + (DOMAIN × 0.25) + (PHASE × 0.10)
 ```
 
-### How It Works
+**Confidence Actions:**
 
-1. **During execution**: Progress saved to `progress/PROGRESS_{NAME}.md`
-2. **On resume**: Executor loads progress, skips completed tasks
-3. **On completion**: Final log written to `logs/LOG_{NAME}_{TS}.md`
+| Score | Label | Action |
+|-------|-------|--------|
+| 0.85+ | Definitive | Auto-assign |
+| 0.70-0.84 | Confident | Assign with reasoning |
+| 0.50-0.69 | Uncertain | Present options to user |
+| Below 0.50 | Low | Ask user to clarify |
 
----
-
-## Agent Integration
-
-Reference specialized agents with `@agent-name` in tasks:
-
-```markdown
-### 🟡 CORE
-- [ ] @kb-architect: Create Redis KB domain
-- [ ] @python-developer: Implement cache wrapper
-- [ ] @test-generator: Add unit tests
-```
-
-### Available Agents
-
-| Agent | Use For |
-|-------|---------|
-| `@kb-architect` | Building knowledge bases |
-| `@python-developer` | Writing Python code |
-| `@test-generator` | Creating tests |
-| `@code-reviewer` | Quality checks |
-| `@llm-specialist` | Prompt engineering |
-
----
-
-## Safeguards
-
-| Safeguard | Default | Purpose |
-|-----------|---------|---------|
-| `max_iterations` | 30 | Prevent infinite loops |
-| `max_retries` | 3 | Retry failed tasks |
-| `circuit_breaker` | 3 | Stop if no progress |
-| `small_steps` | true | One logical change per task |
-
----
-
-## Exit Conditions
-
-| Exit | Code | Description |
-|------|------|-------------|
-| ✅ EXIT_COMPLETE | 0 | All tasks done, criteria met |
-| ⚠️ MAX_ITERATIONS | 1 | Reached iteration limit |
-| 🛑 CIRCUIT_BREAKER | 2 | No progress detected |
-| 🚫 USER_INTERRUPT | 3 | User stopped execution |
-| ❌ VALIDATION_ERROR | 4 | PROMPT file invalid |
-
----
-
-## Examples
-
-### Example 1: Build a Feature
-
-```bash
-/dev "Create a date parser that handles multiple formats"
-```
-
-### Example 2: Build a Knowledge Base
-
-```bash
-/dev "Create a Redis KB with concepts and patterns"
-```
-
-### Example 3: Validate Before Running
-
-```bash
-/dev tasks/PROMPT_AUTH.md --dry-run
-```
-
-### Example 4: Resume After Interruption
-
-```bash
-/dev tasks/PROMPT_CACHE.md --resume
-```
+See `docs/AGENT_MATCHING_ENGINE.md` for the full algorithm.
 
 ---
 
@@ -257,10 +142,10 @@ Reference specialized agents with `@agent-name` in tasks:
 │                    DEVELOPMENT SPECTRUM                          │
 ├─────────────────────────────────────────────────────────────────┤
 │  LEVEL 1           LEVEL 2              LEVEL 3                 │
-│  Vibe Coding       Dev Loop             Spec-Driven Dev         │
-│  ───────────       ────────             ───────────────         │
-│  • Just prompts    • PROMPT.md driven   • 8-phase pipeline      │
-│  • No structure    • Verification loops • Full traceability     │
+│  Vibe Coding       AgentLoop            AgentSpec SDD           │
+│  ───────────       ─────────            ───────────────         │
+│  • Just prompts    • PROMPT.md driven   • 5-phase pipeline      │
+│  • No structure    • Matching Engine    • Full traceability     │
 │  • Hope it works   • Agent leverage     • Quality gates         │
 │                    • Memory bridge      • Enterprise audit      │
 │                                                                  │
@@ -276,11 +161,12 @@ Reference specialized agents with `@agent-name` in tasks:
 | Resource | Path |
 |----------|------|
 | Full Documentation | `_index.md` |
+| Matching Engine | `docs/AGENT_MATCHING_ENGINE.md` |
 | PROMPT Template | `templates/PROMPT_TEMPLATE.md` |
 | Feature Example | `templates/PROMPT_EXAMPLE_FEATURE.md` |
 | KB Example | `templates/PROMPT_EXAMPLE_KB.md` |
 | Prompt Crafter Agent | `.claude/agents/dev/prompt-crafter.md` |
-| Dev Loop Executor | `.claude/agents/dev/dev-loop-executor.md` |
+| AgentLoop Executor | `.claude/agents/dev/agentloop-executor.md` |
 
 ---
 
@@ -291,4 +177,4 @@ Reference specialized agents with `@agent-name` in tasks:
 
 ---
 
-*Dev Loop v1.1 — Ask first, execute perfectly, recover gracefully*
+*AgentLoop v3.0 — Explore first, match intelligently, execute perfectly, recover gracefully*

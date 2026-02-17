@@ -145,14 +145,14 @@ btc-zero-prd-claude-code/
 │   │   ├── code-quality/          # Code review, testing (6)
 │   │   ├── communication/         # Documentation, planning (3)
 │   │   ├── data-engineering/      # Spark, Lakeflow, Medallion (8)
-│   │   ├── dev/                   # Dev Loop agents (2)
+│   │   ├── dev/                   # AgentLoop agents (2)
 │   │   ├── domain/                # Project-specific agents (5)
 │   │   ├── exploration/           # Codebase exploration (2)
 │   │   └── workflow/              # SDD pipeline agents (6)
 │   │
 │   ├── commands/                  # 13 slash commands
 │   │   ├── core/                  # /memory, /sync-context, /readme-maker
-│   │   ├── dev/                   # /dev (Dev Loop)
+│   │   ├── dev/                   # /dev (AgentLoop)
 │   │   ├── knowledge/             # /create-kb
 │   │   ├── review/                # /review
 │   │   └── workflow/              # SDD commands
@@ -176,7 +176,7 @@ btc-zero-prd-claude-code/
 │   │   ├── examples/
 │   │   └── templates/
 │   │
-│   └── dev/                       # Dev Loop (Level 2)
+│   └── dev/                       # AgentLoop (Level 2)
 │       ├── tasks/
 │       ├── progress/
 │       ├── logs/
@@ -255,9 +255,9 @@ btc-zero-prd-claude-code/
 
 **Artifacts:** `.claude/sdd/features/` and `.claude/sdd/archive/`
 
-### Dev Loop (Level 2 Agentic Development)
+### AgentLoop (Level 2 Agentic Development)
 
-Structured iteration with PROMPT.md files and session recovery:
+Structured iteration with PROMPT.md files, Agent Matching Engine, and session recovery:
 
 ```bash
 # Let the crafter guide you
@@ -292,7 +292,7 @@ Structured iteration with PROMPT.md files and session recovery:
 | **Communication** | adaptive-explainer, meeting-analyst, the-planner | Explanations, planning |
 | **Domain** | pipeline-architect, function-developer, extraction-specialist, infra-deployer, dataops-builder | Project-specific tasks |
 | **Exploration** | codebase-explorer, kb-architect | Codebase exploration, KB creation |
-| **Dev** | prompt-crafter, dev-loop-executor | Dev Loop workflow |
+| **Dev** | prompt-crafter, agentloop-executor | AgentLoop workflow |
 
 ### Agent Reference Syntax
 
@@ -350,7 +350,7 @@ In PROMPT.md files, reference agents with `@agent-name`:
 | `/build` | Execute implementation |
 | `/ship` | Archive completed features |
 | `/iterate` | Update documents mid-stream |
-| `/dev` | Dev Loop for structured iteration |
+| `/dev` | AgentLoop for structured iteration |
 | `/create-kb` | Create knowledge base domains |
 | `/review` | Code review workflow |
 | `/create-pr` | Create pull requests |
@@ -498,7 +498,7 @@ infra/environments/
 - **Infrastructure:** See [design/infra-terraform-terragrunt-design.md](design/infra-terraform-terragrunt-design.md)
 - **SDD Workflow:** See [.claude/sdd/_index.md](.claude/sdd/_index.md)
 - **SDD Examples:** See [.claude/sdd/examples/](.claude/sdd/examples/)
-- **Dev Loop:** See [.claude/dev/_index.md](.claude/dev/_index.md)
+- **AgentLoop:** See [.claude/dev/_index.md](.claude/dev/_index.md)
 - **Dev Examples:** See [.claude/dev/examples/](.claude/dev/examples/)
 - **Agents:** Browse [.claude/agents/](.claude/agents/)
 - **KB Index:** See [.claude/kb/_index.yaml](.claude/kb/_index.yaml)
