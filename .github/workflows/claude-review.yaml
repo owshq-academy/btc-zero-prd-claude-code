@@ -32,7 +32,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run Claude Code Review
         uses: anthropics/claude-code-action@v1
@@ -62,7 +62,7 @@ jobs:
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Respond to @claude mention
         uses: anthropics/claude-code-action@v1
